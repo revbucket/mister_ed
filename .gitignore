@@ -1,4 +1,7 @@
 # standard gitignore, copied from https://github.com/github/gitignore
+
+!pretrained_models/ # pretrained models shouldn't live on github
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
