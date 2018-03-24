@@ -9,7 +9,9 @@ import torchvision.transforms as transforms
 from torch.autograd import Variable
 
 import random
-import misc
+
+import utils.pytorch_utils as utils
+import utils.image_utils as img_utils
 import adversarial_attacks as attacks
 import checkpoints
 
@@ -332,7 +334,7 @@ class AdversarialEvaluation(object):
                                    number of minibatches
         RETURNS:
             a dict same keys as attack_ensemble, as well as the key 'ground'.
-            The values are misc.AverageMeter objects
+            The values are utils.AverageMeter objects
         """
 
         ######################################################################
@@ -343,10 +345,10 @@ class AdversarialEvaluation(object):
         assert isinstance(data_loader, torch.utils.data.DataLoader)
 
         assert 'ground' not in attack_ensemble
-        validation_results = {k: misc.AverageMeter() for k in
+        validation_results = {k: utils.AverageMeter() for k in
                               attack_ensemble.keys() + ['ground']}
 
-        misc.cuda_assert(use_gpu)
+        utils.cuda_assert(use_gpu)
         if use_gpu:
             self.classifier_net.cuda()
 
@@ -375,7 +377,7 @@ class AdversarialEvaluation(object):
             ground_output = self.classifier_net(self.normalizer(var_inputs))
 
 
-            ground_accuracy_int = misc.accuracy_int(ground_output, var_labels,
+            ground_accuracy_int = utils.accuracy_int(ground_output, var_labels,
                                                     topk=1)
             ground_avg = validation_results['ground']
             ground_avg.update(ground_accuracy_int / minibatch,

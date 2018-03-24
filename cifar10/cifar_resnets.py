@@ -1,4 +1,13 @@
 '''
+MISTER_ED_NOTE: I blatantlty copied this code from this github repository:
+https://github.com/akamaster/pytorch_resnet_cifar10
+
+Huge kudos to Yerlan Idelbayev.
+'''
+
+
+
+'''
 Properly implemented ResNet-s for CIFAR10 as described in paper [1].
 
 The implementation and structure of this file is hugely influenced by [2]

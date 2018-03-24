@@ -10,7 +10,7 @@
 import torch
 from torch.autograd import Variable
 import scipy.misc as smp
-import misc
+import utils.pytorch_utils as utils
 
 ##############################################################################
 #                                                                            #
@@ -74,7 +74,7 @@ def discretized_adversarial(img_tensor, classifier_net, normalizer,
         for integers i.
     """
 
-    img_tensor = misc.safe_tensor(img_tensor)
+    img_tensor = utils.safe_tensor(img_tensor)
 
     nptf_map = {'random': flip_random_pixel,
                 'greedy': flip_greedy_pixel}
@@ -83,12 +83,12 @@ def discretized_adversarial(img_tensor, classifier_net, normalizer,
     ##########################################################################
     # First figure out 'correct' labels and the 'discretized' labels         #
     ##########################################################################
-    var_img = misc.safe_var(img_tensor)
+    var_img = utils.safe_var(img_tensor)
     norm_var = normalizer.forward(var_img)
     norm_output = classifier_net.forward(norm_var)
     correct_targets = norm_output.max(1)[1]
 
-    og_discretized = misc.safe_var(discretize_image(img_tensor, zero_one=True))
+    og_discretized = utils.safe_var(discretize_image(img_tensor, zero_one=True))
     norm_discretized = normalizer.forward(og_discretized)
     discretized_output = classifier_net.forward(norm_discretized)
     discretized_targets = discretized_output.max(1)[1]
@@ -122,10 +122,10 @@ def discretized_adversarial(img_tensor, classifier_net, normalizer,
             pixels_changed_so_far.add(pixel_idx)
 
             if grad_sign == 0:
-                grad_sign = misc.tuple_getter(signs[idx], pixel_idx)
+                grad_sign = utils.tuple_getter(signs[idx], pixel_idx)
 
-            new_val = (grad_sign / 255. + misc.tuple_getter(example, pixel_idx))
-            misc.tuple_setter(example, pixel_idx, float(new_val))
+            new_val = (grad_sign / 255. + utils.tuple_getter(example, pixel_idx))
+            utils.tuple_setter(example, pixel_idx, float(new_val))
 
             new_out = classifier_net.forward(normalizer.forward(\
                                              Variable(example.unsqueeze(0))))
@@ -187,7 +187,7 @@ def flip_random_pixel(classifier_net, normalizer):
             raise Exception("WHAT IS GOING ON???")
 
         while True:
-            pixel_idx, _ = misc.random_element_index(img_tensor)
+            pixel_idx, _ = utils.random_element_index(img_tensor)
             if pixel_idx not in pixels_changed_so_far:
                 return pixel_idx, 0
 
@@ -210,10 +210,10 @@ def flip_greedy_pixel(classifier_net, normalizer):
         new_grad_data = img_var.grad.data.clone().squeeze()
         signs = new_grad_data.sign()
         for idx_tuple in pixels_changed_so_far:
-            misc.tuple_setter(new_grad_data, idx_tuple, 0)
+            utils.tuple_setter(new_grad_data, idx_tuple, 0)
 
-        argmax = misc.torch_argmax(new_grad_data.abs())
-        return argmax, -1 * misc.tuple_getter(signs, argmax)
+        argmax = utils.torch_argmax(new_grad_data.abs())
+        return argmax, -1 * utils.tuple_getter(signs, argmax)
 
     return flip_fxn
 
