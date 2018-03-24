@@ -1,9 +1,10 @@
 {
     "_comment": "===================GENERAL CONFIGS=========================",
     "dataset_path": "~/grad/datasets",
-    "model_path": "~/grad/assorted_scripts/pytorch_resnet_cifar10/pretrained_models/",
+    "model_path": "~/grad/mister_ed/pretrained_models/",
     "batch_size": 16,
     "default_workers": 4,
+
 
     "_comment": "===================CIFAR 10 CONFIGS=========================",
     "cifar10_means": [0.485, 0.456, 0.406],

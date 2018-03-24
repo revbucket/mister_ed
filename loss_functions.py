@@ -1,7 +1,7 @@
 import lpips.dist_model as dm
 import torch.nn as nn
 import torch
-
+from numbers import Number
 import utils.image_utils as img_utils
 
 """ Loss function building blocks """
@@ -66,14 +66,22 @@ class RegularizedLoss(object):
 
 
     def cleanup_attack_batch(self):
-        """ Cleanup function to clear the fixed images after an attack batch
-            has been made; also zeros grads
+        """ Does some cleanup stuff after we finish on a minibatch:
+        - clears the fixed images for ReferenceRegularizers
+        - zeros grads
+        - clears example-based scalars (i.e. scalars that depend on which
+          example we're using)
         """
         for loss in self.losses.itervalues():
             if isinstance(loss, ReferenceRegularizer):
                 loss.cleanup_attack_batch()
             else:
                 loss.zero_grad()
+
+        for key, scalar in self.scalars.items():
+            if not isinstance(scalar, Number):
+                self.scalars[key] = None
+
 
     def zero_grad(self):
         for loss in self.losses.itervalues():

@@ -1,25 +1,20 @@
 #!/usr/bin/env python
 
 """ Main file that I'll run for experiments and such. VERY VOLATILE!!! """
-
-import torch
 import os
+import torch
+import torch.nn as nn
 
+import config
 import prebuilt_loss_functions as plf
-
 import utils.pytorch_utils as utils
 import utils.image_utils as img_utils
-
 import cifar10.cifar_loader as cifar_loader
 import cifar10.cifar_resnets as cifar_resnets
-
 import adversarial_attacks as aa
 import adversarial_training as advtrain
-import loss_functions as lf
-import discretization as disc
-from torch.autograd import Variable
-import pickle
-import config
+
+
 
 BATCH_SIZE = config.DEFAULT_BATCH_SIZE
 WORKERS = config.DEFAULT_WORKERS
@@ -266,38 +261,111 @@ def main_defense_script():
                                                                use_gpu=False)
     classifier_net.eval()
 
-    # Collect one minibatch worth of data/targets
-    val_loader = cifar_loader.load_cifar_data('val', normalize=False)
-    ex_minibatch, ex_targets = next(iter(val_loader))
-
     # Differentiable normalizer needed for classification
     cifar_normer = utils.DifferentiableNormalize(mean=config.CIFAR10_MEANS,
                                                  std=config.CIFAR10_STDS)
 
 
-    ######################################################################
-    #                           NO ATTACK EXAMPLE                        #
-    ######################################################################
 
-    # DEBUGGING PHASE
+    ######################################################################
+    #                     SIMPLE FGSM TRAINING EXAMPLE                   #
+    ######################################################################
     if True:
+        # Steps
+        # 0) initialize hyperparams for attack/training
+        # 1) setup attack loss object
+        # 2) build attack and parameters for attack
+        # 3) build training object, training loss, data loader
+        # 4) train
 
-        xentropy_loss = lf.PartialXentropy(classifier_net, normalizer=cifar_normer)
-        fgsm_xentropy_obj = aa.FGSM(classifier_net, cifar_normer, xentropy_loss)
-        params = advtrain.AdversarialAttackParameters(fgsm_xentropy_obj,
-                                                      0.5)
-        vanilla_train = advtrain.AdversarialTraining(classifier_net,
-                                                     cifar_normer)
+        # 0
+        FGSM_L_INF = 8.0 / 255.0
+        FGSM_TRAINING_ATTACK_PROPORTION = 0.5
+        FGSM_TRAINING_EPOCHS = 10
 
-        vanilla_train.train(train_loader, 2,
-                            torch.nn.CrossEntropyLoss(),
-                            attack_parameters=params, verbosity='snoop')
+        # 1
+        fgsm_attack_loss = plf.VanillaXentropy(classifier_net, cifar_normer)
+
+        # 2
+        fgsm_xentropy_attack_obj = aa.FGSM(classifier_net, cifar_normer,
+                                           fgsm_attack_loss)
+        fgsm_xentropy_attack_params = advtrain.AdversarialAttackParameters(
+                                        fgsm_xentropy_attack_obj,
+                                        FGSM_TRAINING_ATTACK_PROPORTION,
+                                        {'attack_kwargs':
+                                         {'l_inf_bound': FGSM_L_INF}})
+
+        # 3
+        half_fgsm_cifar = advtrain.AdversarialTraining(classifier_net,
+                                                       cifar_normer,
+                                                       'half_fgsm_cifar',
+                                                       'cifar_resnet32')
+        train_loss = nn.CrossEntropyLoss()
+        train_loader = cifar_loader.load_cifar_data('train', normalize=False)
+
+        # 4
+        half_fgsm_cifar.train(train_loader, FGSM_TRAINING_EPOCHS, train_loss,
+                              attack_parameters=fgsm_xentropy_attack_params,
+                              verbosity='snoop')
 
 
+def main_evaluation_script():
+    """ Here's a little script to show how to evaluate a trained model
+        against varying attacks (on the fly, without saving adv examples)
+    """
+
+    # Steps
+    # 0) Initialize a classifier/normalizer/evaluation loader
+    # 1) Build some attack objects to try
+    # 2) Run the evaluation and print results
+
+    # 0
+    classifier_net = cifar_loader.load_pretrained_cifar_resnet(flavor=32,
+                                                               use_gpu=False)
+    cifar_normer = utils.DifferentiableNormalize(mean=config.CIFAR10_MEANS,
+                                                 std=config.CIFAR10_STDS)
+    val_loader = cifar_loader.load_cifar_data('val', normalize=False)
+
+    # 1
+    L_INF_BOUND = 8.0 / 255.0
+    # --- FGSM attack
+    fgsm_xentropy_loss = plf.VanillaXentropy(classifier_net,
+                                             normalizer=cifar_normer)
+
+    fgsm_attack_obj = aa.FGSM(classifier_net, cifar_normer,
+                              fgsm_xentropy_loss)
+    fgsm_spec_params = {'attack_kwargs': {'l_inf_bound': L_INF_BOUND}}
+    fgsm_attack_params = advtrain.AdversarialAttackParameters(
+                                fgsm_attack_obj, 0.5, fgsm_spec_params)
+
+    # --- BIM attack
+    BIM_L_INF = 8.0 / 255.0
+
+    BIM_STEP_SIZE = 1.0 / 255.0
+    BIM_NUM_ITER = 16
+
+    bim_xentropy_loss = plf.VanillaXentropy(classifier_net,
+                                            normalizer=cifar_normer)
+
+    bim_attack_obj = aa.BIM(classifier_net, cifar_normer,
+                            bim_xentropy_loss)
+    bim_spec_params = {'attack_kwargs': {'l_inf_bound': L_INF_BOUND,
+                                         'step_size': BIM_STEP_SIZE,
+                                         'num_iterations': BIM_NUM_ITER}}
+    bim_attack_params = advtrain.AdversarialAttackParameters(
+                            bim_attack_obj, 0.5, bim_spec_params)
+
+    attack_ensemble = {'fgsm': fgsm_attack_params,
+                       'bim': bim_attack_params}
 
 
+    # 2
+    eval_obj = advtrain.AdversarialEvaluation(classifier_net, cifar_normer)
+    eval_out = eval_obj.evaluate(val_loader, attack_ensemble,
+                                 num_minibatches=5)
 
 
 
 if __name__ == '__main__':
-    main_attack_script(['CWL2'], True)
+    pass
+

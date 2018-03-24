@@ -12,16 +12,14 @@ Checkpoints are state dicts only!!!
 """
 
 import torch
-import numpy as np
 import os
-import datetime
 import re
 import glob
 
+import config
+
 hostname = os.uname()[1]
-unexpanded_checkpoint_dir = {'MacBook-Pro-5.local': '~/grad/assorted_scripts/pretrained_models/',
-                             'machoke': '~/pretrained_models'}[hostname]
-CHECKPOINT_DIR = os.path.expanduser(unexpanded_checkpoint_dir)
+CHECKPOINT_DIR = os.path.expanduser(config.unexpanded_model_path)
 
 
 def clear_experiment(experiment_name, architecture):

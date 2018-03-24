@@ -166,6 +166,94 @@ class AdversarialTraining(object):
         self.architecture_name = architecture_name
 
 
+
+        self.verbosity_level = None
+        self.verbosity_minibatch = None
+        self.verbosity_adv = None
+        self.verbosity_epoch = None
+
+
+    def set_verbosity(self, verbosity):
+        """ Sets the verbosity level for training. Is called in .train method
+            so this method doesn't need to be explicitly called.
+
+            Verbosity is mapped from a string to a comparable int 'level'.
+            verbosity_level : int - comparable value of verbosity
+            verbosity_minibatch: int - we do a printout every this many
+                                       minibatches
+            verbosity_adv: int - we evaluate the efficacy of our attack every
+                                 this many minibatches
+            verbosity_epoch: int - we printout and checkpoint every this many
+                                   epochs
+        ARGS:
+            verbosity : string ['low', 'medium', 'high', 'snoop'],
+                        varying levels of verbosity in increasing order
+
+        RETURNS: None
+        """
+        assert verbosity in ['low', 'medium', 'high', 'snoop']
+        self.verbosity = verbosity
+        self.verbosity_level = {'low': 0,
+                                'medium': 1,
+                                'high': 2,
+                                'snoop': 420}[verbosity]
+
+        self.verbosity_minibatch = {'medium': 2000,
+                                    'high': 100,
+                                    'snoop': 1}.get(verbosity)
+
+        self.verbosity_adv = {'medium': 2000,
+                              'high': 100,
+                              'snoop': 1}.get(verbosity)
+
+        self.verbosity_epoch = {'low': 100,
+                                'medium': 10,
+                                'high': 1,
+                                'snoop': 1}.get(verbosity)
+
+
+    def _attack_subroutine(self, attack_parameters, inputs, labels,
+                           minibatch_num):
+        """ Subroutine to run the specified attack on a minibatch and append
+            the results to inputs/labels.
+
+        NOTE: THIS DOES NOT MUTATE inputs/labels !!!!
+
+        ARGS:
+            attack_parameters:  AdversarialAttackParameters obj (or none) -
+                                if not None, contains info on how to do adv
+                                attacks. If None, we don't train adversarially
+            inputs : Tensor (NxCxHxW) - minibatch of data we build adversarial
+                                        examples for
+            labels : Tensor (longtensor N) - minibatch of labels
+            minibatch_num : int - number of which minibatch we're working on.
+                            Is helpful for printing
+        RETURNS:
+            inputs, labels (but with augmentation in N b/c we built adversarial
+                            examples)
+
+        """
+        if attack_parameters is None:
+            return inputs, labels
+
+
+        adv_data = attack_parameters.attack(inputs, labels)
+        adv_inputs, adv_labels, adv_idxs = adv_data
+
+        if (self.verbosity_level >= 1 and
+            minibatch_num % self.verbosity_adv == self.verbosity_adv - 1):
+            accuracy = attack_parameters.eval(inputs,
+                                              adv_inputs,
+                                              labels,
+                                              adv_idxs)
+            print('[%d, %5d] accuracy: (%.3f, %.3f)' %
+              (epoch + 1, minibach_num + 1, accuracy[1], accuracy[0]))
+
+        inputs = torch.cat([inputs, adv_inputs], dim=0)
+        labels = torch.cat([labels, adv_labels], dim=0)
+        return inputs, labels
+
+
     def train(self, data_loader, num_epochs, loss_fxn,
               optimizer=None, attack_parameters=None, use_gpu=False,
               verbosity='medium'):
@@ -193,7 +281,7 @@ class AdversarialTraining(object):
         ######################################################################
         #   Setup/ input validations                                         #
         ######################################################################
-        self.classifier_net.train() # in training mod
+        self.classifier_net.train() # in training mode
         assert isinstance(num_epochs, int)
 
         if attack_parameters is not None:
@@ -208,23 +296,16 @@ class AdversarialTraining(object):
             self.classifier_net.cuda()
 
         # Verbosity parameters
-        assert verbosity in ['low', 'medium', 'high', 'snoop']
-        verbosity_level = {'low': 0, 'medium': 1,
-                           'high': 2, 'snoop': 420}[verbosity]
-        verbosity_minibatch = {'medium': 2000, 'high': 100,
-                               'snoop': 1}.get(verbosity)
-        verbosity_adv = {'medium': 2000, 'high': 100,
-                                  'snoop': 1}.get(verbosity)
-        verbosity_epoch = {'low': 100, 'medium': 10,
-                           'high': 1, 'snoop': 1}.get(verbosity)
-                           # ALSO CHECKPOINTS AT THIS LEVEL
-
+        assert verbosity in ['low', 'medium', 'high', 'snoop', None]
+        self.set_verbosity(verbosity)
+        verbosity_level = self.verbosity_level
+        verbosity_minibatch = self.verbosity_minibatch
+        verbosity_epoch = self.verbosity_epoch
 
 
         # setup loss fxn, optimizer
         optimizer = optimizer or optim.Adam(self.classifier_net.parameters(),
                                             lr=0.001)
-        criterion = loss_fxn
 
         ######################################################################
         #   Training loop                                                    #
@@ -238,42 +319,20 @@ class AdversarialTraining(object):
                     inputs = inputs.cuda()
                     labels = labels.cuda()
 
-                #############################################################
-                # Make adversarial examples and include in batch
-                if attack_parameters is not None:
-                    adv_data = attack_parameters.attack(inputs, labels)
-                    adv_inputs, adv_labels, adv_idxs = adv_data
 
-                    if (verbosity_level >= 1 and
-                        i % verbosity_adv == verbosity_adv - 1):
-                        accuracy = attack_parameters.eval(inputs,
-                                                          adv_inputs,
-                                                          labels,
-                                                          adv_idxs)
-                        print('[%d, %5d] accuracy: (%.3f, %.3f)' %
-                          (epoch + 1, i + 1, accuracy[1], accuracy[0]))
-
-                    inputs = torch.cat([inputs, adv_inputs], dim=0)
-                    labels = torch.cat([labels, adv_labels], dim=0)
-
-
-                    #self.normalizer.nondifferentiable_call()
-                #############################################################
-
+                # Build adversarial examples
+                inputs, labels = self._attack_subroutine(attack_parameters,
+                                                         inputs, labels, i)
 
                 # Now proceed with standard training
                 self.normalizer.differentiable_call()
                 self.classifier_net.train()
                 inputs, labels = Variable(inputs), Variable(labels)
-
                 optimizer.zero_grad()
 
                 # forward step
-
-
                 outputs = self.classifier_net.forward(self.normalizer(inputs))
-
-                loss = criterion(outputs, labels)
+                loss = loss_fxn.forward(outputs, labels)
 
                 # backward step
                 loss.backward()
@@ -361,7 +420,7 @@ class AdversarialEvaluation(object):
             print "Starting minibatch %s..." % i
 
             if i >= num_minibatches:
-                return validation_results
+                break
 
             inputs, labels = data
             if use_gpu:
@@ -401,7 +460,7 @@ class AdversarialEvaluation(object):
                                   n=int(minibatch))
 
 
-        return validation_results
+        return {k: meter.avg for k, meter in validation_results.iteritems()}
 
 
 
