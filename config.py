@@ -3,7 +3,8 @@
 import json
 import os
 
-config_dict = json.loads(open('config.json', 'rb').read())
+config_path = os.path.join(os.path.dirname(__file__), 'config.json')
+config_dict = json.loads(open(config_path, 'rb').read())
 
 unexpanded_dataset_dir = config_dict['dataset_path']
 unexpanded_model_path = config_dict['model_path']

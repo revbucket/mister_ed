@@ -1,7 +1,7 @@
 {
     "_comment": "===================GENERAL CONFIGS=========================",
-    "dataset_path": "~/grad/datasets",
-    "model_path": "~/grad/mister_ed/pretrained_models/",
+    "dataset_path": "~/datasets",
+    "model_path": "~/git_repos/mister_ed/pretrained_models/",
     "batch_size": 16,
     "default_workers": 4,
 
