@@ -17,10 +17,10 @@ class AdversarialAttack(object):
         are needed.
     """
 
-    def __init__(self, classifier_net, normalizer):
+    def __init__(self, classifier_net, normalizer, use_gpu=False):
         self.classifier_net = classifier_net
         self.normalizer = normalizer or utils.IdentityNormalize()
-        self.use_gpu = False
+        self.use_gpu = use_gpu
 
     @property
     def _dtype(self):
@@ -141,8 +141,8 @@ class AdversarialAttack(object):
 ##############################################################################
 
 class FGSM(AdversarialAttack):
-    def __init__(self, classifier_net, normalizer, loss_fxn):
-        super(FGSM, self).__init__(classifier_net, normalizer)
+    def __init__(self, classifier_net, normalizer, loss_fxn, use_gpu=False):
+        super(FGSM, self).__init__(classifier_net, normalizer, use_gpu=use_gpu)
         self.loss_fxn = loss_fxn
 
     def attack(self, examples, labels, l_inf_bound=0.05):
@@ -399,7 +399,7 @@ class CWL2(AdversarialAttack):
                              l2 distance between [0.0, 1.0] images
         """
 
-        super(CWL2, self).__init__(classifier_net, normalizer)
+        super(CWL2, self).__init__(classifier_net, normalizer, use_gpu=use_gpu)
         self.loss_fxn = loss_fxn
         self.scale_constant = scale_constant
         self.num_bin_search_steps = num_bin_search_steps

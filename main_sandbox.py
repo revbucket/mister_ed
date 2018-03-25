@@ -32,7 +32,8 @@ WORKERS = config.DEFAULT_WORKERS
 '''
 
 def main_attack_script(attack_examples=None,
-                       show_images=False):
+                       show_images=False,
+                       use_gpu=False):
 
     # Which attacks to do...
     attack_examples = attack_examples or ['FGSM', 'BIM', 'PGD', 'CW2']
@@ -43,11 +44,12 @@ def main_attack_script(attack_examples=None,
 
     # Initialize CIFAR classifier
     classifier_net = cifar_loader.load_pretrained_cifar_resnet(flavor=32,
-                                                               use_gpu=False)
+                                                               use_gpu=use_gpu)
     classifier_net.eval()
 
     # Collect one minibatch worth of data/targets
-    val_loader = cifar_loader.load_cifar_data('val', normalize=False)
+    val_loader = cifar_loader.load_cifar_data('val', normalize=False,
+                                              use_gpu=use_gpu)
     ex_minibatch, ex_targets = next(iter(val_loader))
 
     # Differentiable normalizer needed for classification
