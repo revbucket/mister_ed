@@ -302,7 +302,8 @@ class LInfPGD(AdversarialAttack):
 
 
     def attack(self, examples, labels, l_inf_bound=0.05, step_size=1/255.0,
-               num_iterations=None, verbose=True):
+               num_iterations=None, random_init=False, signed=True,
+               verbose=True):
         """ Builds PGD examples for the given examples with l_inf bound and
             given step size. Is almost identical to the BIM attack, except
             we take steps that are proportional to gradient value instead of
@@ -316,6 +317,13 @@ class LInfPGD(AdversarialAttack):
                           (relative to the 0.0, 1.0 range)
             step_size : float - how much of a step we take each iteration
             num_iterations: int - how many iterations we take
+            random_init : bool - if True, we randomly pick a point in the
+                               l-inf epsilon ball around each example
+            signed : bool - if True, each step is
+                            adversarial = adversarial + sign(grad)
+                            [this is the form that madry et al use]
+                            if False, each step is
+                            adversarial = adversarial + grad
         RETURNS:
             NxCxHxW tensor with adversarial examples
         """
@@ -345,6 +353,13 @@ class LInfPGD(AdversarialAttack):
         intermed_images = var_examples
         validator(intermed_images, var_labels, iter_no="START")
 
+        # random initialization if necessary
+        if random_init:
+            rand_noise = (torch.rand(*intermed_images.shape) * l_inf_bound * 2 -
+                          torch.ones(*intermed_images.shape) * l_inf_bound)
+            rand_noise = rand_noise.type(type(intermed_images))
+            intermed_images = rand_noise + intermed_images
+
         # Start iterating...
         for iter_no in xrange(num_iterations):
 
@@ -359,7 +374,11 @@ class LInfPGD(AdversarialAttack):
                 torch.autograd.backward(loss)
 
             # Take a step and 'project'
-            perturbation = intermed_images.grad.data * step_size
+            if signed:
+                perturbation = torch.sign(intermed_images.grad.data) * step_size
+            else:
+                perturbation = intermed_images.grad.data * step_size
+
             clamp_inf = utils.clamp_ref(intermed_images.data + perturbation,
                                        examples, l_inf_bound)
             clamp_box = torch.clamp(clamp_inf, 0., 1.)
