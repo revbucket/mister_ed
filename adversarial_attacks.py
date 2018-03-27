@@ -124,8 +124,8 @@ class AdversarialAttack(object):
         print_str = ""
         if isinstance(iter_no, int):
             print_str += "(iteration %02d): " % iter_no
-        elif iter_no == 'START':
-            print_str += "(START): "
+        elif isinstance(iter_no, basestring):
+            print_str += "(%s): " % iter_no
         else:
             pass
 
@@ -206,8 +206,8 @@ class FGSM(AdversarialAttack):
 ##############################################################################
 
 class BIM(AdversarialAttack):
-    def __init__(self, classifier_net, normalizer, loss_fxn):
-        super(BIM, self).__init__(classifier_net, normalizer)
+    def __init__(self, classifier_net, normalizer, loss_fxn, use_gpu=False):
+        super(BIM, self).__init__(classifier_net, normalizer, use_gpu=use_gpu)
         self.loss_fxn = loss_fxn
 
     def attack(self, examples, labels, l_inf_bound=0.05, step_size=1 / 255.,
@@ -296,8 +296,9 @@ class BIM(AdversarialAttack):
 ##############################################################################
 
 class LInfPGD(AdversarialAttack):
-    def __init__(self, classifier_net, normalizer, loss_fxn):
-        super(LInfPGD, self).__init__(classifier_net, normalizer)
+    def __init__(self, classifier_net, normalizer, loss_fxn, use_gpu=False):
+        super(LInfPGD, self).__init__(classifier_net, normalizer,
+                                      use_gpu=use_gpu)
         self.loss_fxn = loss_fxn
 
 
@@ -355,11 +356,13 @@ class LInfPGD(AdversarialAttack):
 
         # random initialization if necessary
         if random_init:
+            print 
             rand_noise = (torch.rand(*intermed_images.shape) * l_inf_bound * 2 -
                           torch.ones(*intermed_images.shape) * l_inf_bound)
-            rand_noise = rand_noise.type(type(intermed_images))
-            intermed_images = rand_noise + intermed_images
-
+            rand_noise = rand_noise.type(self._dtype)
+            intermed_images = Variable(rand_noise + intermed_images.data, requires_grad=True)
+            validator(intermed_images, var_labels, iter_no="RANDOM")
+            
         # Start iterating...
         for iter_no in xrange(num_iterations):
 
