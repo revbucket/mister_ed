@@ -145,7 +145,7 @@ class FGSM(AdversarialAttack):
         super(FGSM, self).__init__(classifier_net, normalizer, use_gpu=use_gpu)
         self.loss_fxn = loss_fxn
 
-    def attack(self, examples, labels, l_inf_bound=0.05):
+    def attack(self, examples, labels, l_inf_bound=0.05, verbose=True):
 
         """ Builds FGSM examples for the given examples with l_inf bound
         ARGS:
@@ -356,13 +356,13 @@ class LInfPGD(AdversarialAttack):
 
         # random initialization if necessary
         if random_init:
-            print 
             rand_noise = (torch.rand(*intermed_images.shape) * l_inf_bound * 2 -
                           torch.ones(*intermed_images.shape) * l_inf_bound)
             rand_noise = rand_noise.type(self._dtype)
-            intermed_images = Variable(rand_noise + intermed_images.data, requires_grad=True)
+            intermed_images = Variable(rand_noise + intermed_images.data,
+                                       requires_grad=True)
             validator(intermed_images, var_labels, iter_no="RANDOM")
-            
+
         # Start iterating...
         for iter_no in xrange(num_iterations):
 
@@ -402,8 +402,8 @@ class CWL2(AdversarialAttack):
     def __init__(self, classifier_net, normalizer, loss_fxn,
                  scale_constant, num_bin_search_steps=5, num_optim_steps=1000,
                  distance_metric_type='l2', confidence=0.0, use_gpu=False):
-        """ Most effective implementation of Carlini/Wagner's L2 attack as outlined
-            in their paper: https://arxiv.org/pdf/1608.04644.pdf
+        """ Most effective implementation of Carlini/Wagner's L2 attack as
+            outlined in their paper: https://arxiv.org/pdf/1608.04644.pdf
             Reference Implementations:
                 - https://github.com/rwightman/pytorch-nips2017-attack-example
                 - https://github.com/tensorflow/cleverhans/
@@ -552,7 +552,7 @@ class CWL2(AdversarialAttack):
 
 
     def attack(self, examples, original_labels, target_labels=None,
-               verbose=False):
+               verbose=True):
 
         if self.use_gpu:
             self.classifier_net.cuda()

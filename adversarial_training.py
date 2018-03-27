@@ -294,6 +294,7 @@ class AdversarialTraining(object):
         assert not (use_gpu and not cuda.is_available())
         if use_gpu:
             self.classifier_net.cuda()
+        attack_parameters.use_gpu = use_gpu
 
         # Verbosity parameters
         assert verbosity in ['low', 'medium', 'high', 'snoop', None]
