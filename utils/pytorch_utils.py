@@ -142,7 +142,7 @@ def checkpoint_incremental_array(output_file, numpy_list,
         arrays
     """
     concat = np.concatenate(numpy_list, axis=0)
-    np.save(output_file concat)
+    np.save(output_file, concat)
     if return_concat:
         return [concat]
 
