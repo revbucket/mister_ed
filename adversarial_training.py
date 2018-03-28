@@ -265,7 +265,7 @@ class AdversarialTraining(object):
 
     def train(self, data_loader, num_epochs, loss_fxn,
               optimizer=None, attack_parameters=None, use_gpu=False,
-              verbosity='medium'):
+              verbosity='medium', starting_epoch=0):
         """ Modifies the NN weights of self.classifier_net by training with
             the specified parameters s
         ARGS:
@@ -282,6 +282,10 @@ class AdversarialTraining(object):
             use_gpu : bool - if True, we use GPU's for things
             verbosity : string - must be 'low', 'medium', 'high', which
                         describes how much to print
+            starting_epoch : int - which epoch number we start on. Is useful 
+                             for correct labeling of checkpoints and figuring 
+                             out how many epochs we actually need to run for 
+                             (i.e., num_epochs - starting_epoch)
         RETURNS:
             None, but modifies the classifier_net's weights
         """
@@ -321,7 +325,7 @@ class AdversarialTraining(object):
         #   Training loop                                                    #
         ######################################################################
 
-        for epoch in range(num_epochs):
+        for epoch in range(starting_epoch, num_epochs):
             running_loss = 0.0
             for i, data in enumerate(data_loader, 0):
                 inputs, labels = data
@@ -372,5 +376,53 @@ class AdversarialTraining(object):
         return
 
 
+    def train_from_checkpoint(self, data_loader, num_epochs, loss_fxn, 
+                              optimizer=None, attack_parameters=None, 
+                              use_gpu=False, verbosity='medium', 
+                              starting_epoch='max'):
+        """ Resumes training from a saved checkpoint with the same architecture.
+            i.e. loads weights from specified checkpoint, figures out which 
+                 epoch we checkpointed on and then continues training until 
+                 we reach num_epochs epochs
+        ARGS: 
+            same as in train
+            starting_epoch: 'max' or int - which epoch we start training from.
+                             'max' means the highest epoch we can find, 
+                             an int means a specified int epoch exactly. 
+        RETURNS:
+            None
+        """
 
+        ######################################################################
+        #   Checkpoint handling block                                        #
+        ######################################################################
+        # which epoch to load 
+        valid_epochs = checkpoints.list_saved_epochs(self.experiment_name,
+                                                     self.architecture_name)
+        assert valid_epochs != []
+        if starting_epoch == 'max':
+            epoch = max(valid_epochs)
+        else:
+            assert starting_epoch in valid_epochs
+            epoch = starting_epoch
+
+        # modify the classifer to use these weights 
+
+        self.classifier_net = checkpoints.load_state_dict(self.experiment_name,
+                                                         self.architecture_name,
+                                                         epoch,
+                                                         self.classifier_net)
+
+        ######################################################################
+        #   Training block                                                   #
+        ######################################################################
+        
+        self.train(data_loader, num_epochs, loss_fxn, 
+                   optimizer=optimizer, 
+                   attack_parameters=attack_parameters,
+                   use_gpu=use_gpu, 
+                   verbosity=verbosity, 
+                   starting_epoch=epoch)
+
+        
 
