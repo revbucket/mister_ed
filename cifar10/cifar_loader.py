@@ -16,7 +16,7 @@ import re
 ###############################################################################
 
 DEFAULT_DATASETS_DIR = config.DEFAULT_DATASETS_DIR
-RESNET_WEIGHT_PATH   = config.RESNET_WEIGHT_PATH
+RESNET_WEIGHT_PATH   = config.MODEL_PATH
 DEFAULT_BATCH_SIZE   = config.DEFAULT_BATCH_SIZE
 DEFAULT_WORKERS      = config.DEFAULT_WORKERS
 CIFAR10_MEANS        = config.CIFAR10_MEANS

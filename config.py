@@ -21,7 +21,7 @@ unexpanded_model_path = config_dict['model_path']
 unexpanded_output_image_path = config_dict['output_image_path']
 
 DEFAULT_DATASETS_DIR = path_resolver(unexpanded_dataset_dir)
-RESNET_WEIGHT_PATH = path_resolver(unexpanded_model_path)
+PRETRAINED_MODEL_PATH = path_resolver(unexpanded_model_path)
 OUTPUT_IMAGE_PATH = path_resolver(unexpanded_output_image_path)
 
 
