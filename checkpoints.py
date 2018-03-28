@@ -118,6 +118,20 @@ def save_state_dict(experiment_name, architecture, epoch_val, model,
     return model
 
 
+def load_state_dict_from_filename(filename, model):
+    """ Skips the whole parameter argument thing and just loads the whole
+        state dict from a filename.
+    ARGS:
+        filename : string - filename without directories
+        model : nn.Module - has 'load_state_dict' method
+    RETURNS:
+        the model loaded with the weights contained in the file
+    """
+    assert len(glob.glob(os.path.join(*[CHECKPOINT_DIR, filename]))) == 1
+
+    # LOAD FILENAME
+    model.load_state_dict(torch.load(os.path.join(*[CHECKPOINT_DIR, filename])))
+    return model
 
 
 def load_state_dict(experiment_name, architecture, epoch, model):
@@ -128,12 +142,8 @@ def load_state_dict(experiment_name, architecture, epoch, model):
     """
 
     filename = params_to_filename(experiment_name, architecture, epoch)
-    assert len(glob.glob(os.path.join(*[CHECKPOINT_DIR, filename]))) == 1
+    return load_state_dict_from_filename(filename, model)
 
-    # LOAD FILENAME
-
-    model.load_state_dict(torch.load(os.path.join(*[CHECKPOINT_DIR, filename])))
-    return model
 
 
 
