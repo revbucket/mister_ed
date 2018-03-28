@@ -71,7 +71,7 @@ def load_pretrained_cifar_resnet(flavor=32, use_gpu=False):
 
 def load_cifar_data(train_or_val, extra_args=None, dataset_dir=None,
                     normalize=False, batch_size=None, use_gpu=False,
-                    shuffle=True):
+                    shuffle=True, no_transform=False):
     """ Builds a CIFAR10 data loader for either training or evaluation of
         CIFAR10 data. See the 'DEFAULTS' section in the fxn for default args
     ARGS:
@@ -85,6 +85,8 @@ def load_cifar_data(train_or_val, extra_args=None, dataset_dir=None,
         use_gpu : boolean - if True, we pin memory and return cudaPinned values
                             in the iterator
         shuffle: boolean - if True, we load the data in a shuffled order
+        no_transform: boolean - if True, we don't do any random cropping/
+                                reflections of the data 
     """
 
     ##################################################################
@@ -102,10 +104,12 @@ def load_cifar_data(train_or_val, extra_args=None, dataset_dir=None,
     constructor_kwargs.update(extra_args or {})
 
     # transform chain
+    transform_list = []
+    if no_transform is False:
+        transform_list.extend([transforms.RandomHorizontalFlip(),
+                               transforms.RandomCrop(32, 4)])
+    transform_list.append(transforms.ToTensor())
 
-    transform_list = [transforms.RandomHorizontalFlip(),
-                      transforms.RandomCrop(32, 4),
-                     transforms.ToTensor()]
     if normalize:
         normalizer = transforms.Normalize(mean=CIFAR10_MEANS,
                                           std=CIFAR10_STDS)

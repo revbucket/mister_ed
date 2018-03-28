@@ -8,6 +8,31 @@ import matplotlib.pyplot as plt
 import torchvision.transforms as transforms
 import random
 
+def nhwc255_xform(img_np_array):
+    """ Takes in a numpy array and transposes it so that the channel is the last
+        axis. Also multiplies all values by 255.0
+    ARGS:
+        img_np_array : np.ndarray - array of shape (NxHxWxC) or (NxCxHxW)
+                       [assumes that we're in NCHW by default,
+                        but if not ambiguous will handle NHWC too ]
+    RETURNS:
+        array of form NHWC
+    """
+    assert isinstance(img_np_array, np.ndarray)
+    shape = img_np_array.shape
+    assert len(shape) == 4
+
+    # determine which configuration we're in
+    ambiguous = (shape[1] == shape[3] == 3)
+    nhwc = (shape[1] == 3)
+
+    # transpose unless we're unambiguously in nhwc case
+    if nhwc and not ambiguous:
+        return img_np_array * 255.0
+    else:
+        return np.transpose(img_np_array, (0, 2, 3, 1)) * 255.0
+
+
 def show_images(img_tensor, normalize=None, ipython=True, num_rows=None):
     """ quick method to show list of cifar images in a single row
     ARGS:

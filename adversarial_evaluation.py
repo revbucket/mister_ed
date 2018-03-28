@@ -130,7 +130,7 @@ class AdversarialEvaluation(object):
     def full_attack(self, data_loader, attack_parameters,
                     output_filename, use_gpu=False, num_minibatches=None,
                     continue_attack=True, checkpoint_minibatch=10,
-                    verbose=True):
+                    verbose=True, save_xform=img_utils.nhwc255_xform):
 
         """ Builds an attack on the data and outputs the resulting attacked
             images into a .numpy file
@@ -155,7 +155,9 @@ class AdversarialEvaluation(object):
             checkpoint_minibatch: int - how many minibatches until we checkpoint
             verbose: bool - if True, we print out which minibatch we're in out
                             of total number of minibatches
-
+            save_xform: fxn, np.ndarray -> np.ndarray - function that
+                        transforms our adv_example.data.numpy() to the form that
+                        we want to store it in in the .npy output file
         RETURNS:
             numpy array of attacked examples
         """
@@ -237,7 +239,7 @@ class AdversarialEvaluation(object):
 
             # Convert to numpy and append to our save buffer
             adv_data = utils.safe_tensor(adv_examples).cpu().numpy()
-            minibatch_attacks.append(adv_data)
+            minibatch_attacks.append(save_xform(adv_data))
 
             # Perform checkpoint if necessary
             if minibatch_num > 0 and minibatch_num % checkpoint_minibatch == 0:
