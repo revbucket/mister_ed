@@ -3,16 +3,18 @@
 import json
 import os
 
+config_path = os.path.join(os.path.dirname(__file__), 'config.json')
+config_dir = os.path.dirname(config_path)
+config_dict = json.loads(open(config_path, 'rb').read())
+
+
 def path_resolver(path):
     if path.startswith('~/'):
         return os.path.expanduser(path)
 
     if path.startswith('./'):
-        return os.path.realpath(path)
+        return os.path.join(*[config_dir] + path.split('/')[1:])
 
-
-config_path = os.path.join(os.path.dirname(__file__), 'config.json')
-config_dict = json.loads(open(config_path, 'rb').read())
 
 unexpanded_dataset_dir = config_dict['dataset_path']
 unexpanded_model_path = config_dict['model_path']
