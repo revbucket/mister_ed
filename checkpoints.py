@@ -18,8 +18,8 @@ import glob
 
 import config
 
-hostname = os.uname()[1]
-CHECKPOINT_DIR = os.path.expanduser(config.unexpanded_model_path)
+
+CHECKPOINT_DIR = config.MODEL_PATH
 
 
 def clear_experiment(experiment_name, architecture):
@@ -30,14 +30,14 @@ def clear_experiment(experiment_name, architecture):
         os.remove(full_path) if os.path.exists(full_path) else None
 
 def list_saved_epochs(experiment_name, architecture):
-    """ Returns a list of int epochs we've checkpointed for this 
-        experiment name and architecture 
+    """ Returns a list of int epochs we've checkpointed for this
+        experiment name and architecture
     """
 
     extract_epoch = lambda f: int(f.split('.')[-3])
     filename_list = params_to_filename(experiment_name, architecture)
     return [extract_epoch(f) for f in filename_list]
-    
+
 
 def params_to_filename(experiment_name, architecture, epoch_val=None):
     """ Outputs string name of file.
