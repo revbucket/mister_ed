@@ -66,7 +66,7 @@ class AdversarialAttackParameters(object):
         ARGS:
             use_gpu : bool - if True, the attack uses the GPU, ow it doesn't
         RETURNS:
-            None 
+            None
         """
         self.adv_attack_obj.use_gpu = use_gpu
 
@@ -421,6 +421,9 @@ class AdversarialEvaluation(object):
         utils.cuda_assert(use_gpu)
         if use_gpu:
             self.classifier_net.cuda()
+
+        for attack_params in attack_ensemble.values():
+            attack_params.set_gpu(use_gpu)
 
 
         ######################################################################
