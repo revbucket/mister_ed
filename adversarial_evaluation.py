@@ -20,6 +20,7 @@ import os
 import config
 import glob
 import numpy as np
+import math
 
 ############################################################################
 #                                                                          #
@@ -128,7 +129,8 @@ class AdversarialEvaluation(object):
 
     def full_attack(self, data_loader, attack_parameters,
                     output_filename, use_gpu=False, num_minibatches=None,
-                    continue_attack=True, checkpoint_minibatch=10):
+                    continue_attack=True, checkpoint_minibatch=10,
+                    verbose=True):
 
         """ Builds an attack on the data and outputs the resulting attacked
             images into a .numpy file
@@ -151,6 +153,8 @@ class AdversarialEvaluation(object):
                                  next minibatch in the data loader
                            This is kinda like a checkpointing system for attacks
             checkpoint_minibatch: int - how many minibatches until we checkpoint
+            verbose: bool - if True, we print out which minibatch we're in out
+                            of total number of minibatches
 
         RETURNS:
             numpy array of attacked examples
@@ -167,6 +171,8 @@ class AdversarialEvaluation(object):
         if isinstance(data_loader.batch_sampler.sampler,
                       torch.utils.data.sampler.RandomSampler):
             print "WARNING: data loader is shuffled!"
+        total_num_minibatches = int(math.ceil(len(data_loader.dataset)))
+        minibatch_digits = len(str(total_num_minibatches))
 
         # Do cuda stuff
         utils.cuda_assert(use_gpu)
@@ -198,6 +204,12 @@ class AdversarialEvaluation(object):
             minibatch_attacks.append(saved_data)
             num_prev_minibatches = saved_num_examples / loader_batch_size
 
+        if verbose:
+            def printer(num):
+                print ("Minibatch %%0%dd/%s" % (minibatch_digits,
+                                                   total_num_minibatches) % num)
+        else:
+            printer = lambda num: None
 
 
         ######################################################################
@@ -211,6 +223,8 @@ class AdversarialEvaluation(object):
 
             if minibatch_num >= num_minibatches:
                 break
+
+            printer(minibatch_num)
 
             # Load data and build minibatch of attacked images
             inputs, labels = data
