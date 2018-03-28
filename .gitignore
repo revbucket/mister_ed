@@ -1,13 +1,18 @@
 # standard gitignore, copied from https://github.com/github/gitignore
 
+config.json # Don't push configs around the repo
+
 !pretrained_models/ # pretrained models shouldn't live on github
 pretrained_models/*
+
 
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
 *$py.class
+
+
 
 # C extensions
 *.so

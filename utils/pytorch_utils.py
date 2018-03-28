@@ -125,6 +125,28 @@ def tanh_rescale(x, x_min=-1., x_max=1.):
     return (torch.tanh(x) + 1) * 0.5 * (x_max - x_min) + x_min
 
 
+def checkpoint_incremental_array(output_file, numpy_list,
+                                 return_concat=True):
+    """ Takes in a string of a filename and a list of numpy arrays and
+        concatenates them along first axis, saves them to a file, and then
+        outputs a list containing only that single concatenated array
+    ARGS:
+        output_file : string ending in .npy - full path location of the
+                      place we're saving this numpy array
+        numpy_list : list of numpy arrays (all same shape except for the first
+                     axis) - list of arrays we concat and save to file
+        return_concat : boolean - if True, we return these concatenated arrays
+                        in a list, else we return nothing
+    RETURNS:
+        maybe nothing, maybe the a singleton list containing the concatenated
+        arrays
+    """
+    concat = np.concatenate(numpy_list, axis=0)
+    np.save(output_file concat)
+    if return_concat:
+        return [concat]
+
+
 ##############################################################################
 #                                                                            #
 #                               CLASSIFICATION HELPERS                       #

@@ -70,7 +70,8 @@ def load_pretrained_cifar_resnet(flavor=32, use_gpu=False):
 ##############################################################################
 
 def load_cifar_data(train_or_val, extra_args=None, dataset_dir=None,
-                    normalize=False, batch_size=None, use_gpu=False):
+                    normalize=False, batch_size=None, use_gpu=False,
+                    shuffle=True):
     """ Builds a CIFAR10 data loader for either training or evaluation of
         CIFAR10 data. See the 'DEFAULTS' section in the fxn for default args
     ARGS:
@@ -83,6 +84,7 @@ def load_cifar_data(train_or_val, extra_args=None, dataset_dir=None,
                              means and dividing by standard devs
         use_gpu : boolean - if True, we pin memory and return cudaPinned values
                             in the iterator
+        shuffle: boolean - if True, we load the data in a shuffled order
     """
 
     ##################################################################
@@ -94,7 +96,7 @@ def load_cifar_data(train_or_val, extra_args=None, dataset_dir=None,
 
     # Extra arguments for DataLoader constructor
     constructor_kwargs = {'batch_size': batch_size,
-                          'shuffle': True,
+                          'shuffle': shuffle,
                           'num_workers': DEFAULT_WORKERS,
                           'pin_memory': use_gpu}
     constructor_kwargs.update(extra_args or {})
