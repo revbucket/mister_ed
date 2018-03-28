@@ -171,7 +171,8 @@ class AdversarialEvaluation(object):
         if isinstance(data_loader.batch_sampler.sampler,
                       torch.utils.data.sampler.RandomSampler):
             print "WARNING: data loader is shuffled!"
-        total_num_minibatches = int(math.ceil(len(data_loader.dataset)))
+        total_num_minibatches = int(math.ceil(len(data_loader.dataset) /
+                                              data_loader.batch_size))
         minibatch_digits = len(str(total_num_minibatches))
 
         # Do cuda stuff
@@ -221,7 +222,7 @@ class AdversarialEvaluation(object):
             if minibatch_num < num_prev_minibatches: # CAREFUL ABOUT OBOEs HERE
                 continue
 
-            if minibatch_num >= num_minibatches:
+            if num_minibatches is not None and minibatch_num >= num_minibatches:
                 break
 
             printer(minibatch_num)
@@ -232,10 +233,7 @@ class AdversarialEvaluation(object):
                 inputs = inputs.cuda()
                 labels = labels.cuda()
 
-            var_inputs = Variable(inputs, requires_grad=True)
-            var_labels = Variable(labels, requires_grad=False)
-
-            adv_examples = attack_parameters.attack(var_inputs, var_labels)[0]
+            adv_examples = attack_parameters.attack(inputs, labels)[0]
 
             # Convert to numpy and append to our save buffer
             adv_data = utils.safe_tensor(adv_examples).cpu().numpy()
