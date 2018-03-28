@@ -361,6 +361,7 @@ class LInfPGD(AdversarialAttack):
             rand_noise = rand_noise.type(self._dtype)
             intermed_images = Variable(rand_noise + intermed_images.data,
                                        requires_grad=True)
+
             validator(intermed_images, var_labels, iter_no="RANDOM")
 
         # Start iterating...

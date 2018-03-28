@@ -61,7 +61,14 @@ class AdversarialAttackParameters(object):
         else:
             raise Exception("Invalid attack type")
 
-
+    def set_gpu(self, use_gpu):
+        """ Propagates changes of the 'use_gpu' parameter down to the attack
+        ARGS:
+            use_gpu : bool - if True, the attack uses the GPU, ow it doesn't
+        RETURNS:
+            None 
+        """
+        self.adv_attack_obj.use_gpu = use_gpu
 
 
     def attack(self, inputs, labels):
@@ -213,7 +220,7 @@ class AdversarialTraining(object):
 
 
     def _attack_subroutine(self, attack_parameters, inputs, labels,
-                           minibatch_num):
+                           epoch_num, minibatch_num):
         """ Subroutine to run the specified attack on a minibatch and append
             the results to inputs/labels.
 
@@ -226,6 +233,8 @@ class AdversarialTraining(object):
             inputs : Tensor (NxCxHxW) - minibatch of data we build adversarial
                                         examples for
             labels : Tensor (longtensor N) - minibatch of labels
+            epoch_num : int - number of which epoch we're working on.
+                        Is helpful for printing
             minibatch_num : int - number of which minibatch we're working on.
                             Is helpful for printing
         RETURNS:
@@ -247,7 +256,7 @@ class AdversarialTraining(object):
                                               labels,
                                               adv_idxs)
             print('[%d, %5d] accuracy: (%.3f, %.3f)' %
-              (epoch + 1, minibach_num + 1, accuracy[1], accuracy[0]))
+              (epoch_num + 1, minibatch_num + 1, accuracy[1], accuracy[0]))
 
         inputs = torch.cat([inputs, adv_inputs], dim=0)
         labels = torch.cat([labels, adv_labels], dim=0)
@@ -294,7 +303,7 @@ class AdversarialTraining(object):
         assert not (use_gpu and not cuda.is_available())
         if use_gpu:
             self.classifier_net.cuda()
-        attack_parameters.use_gpu = use_gpu
+        attack_parameters.set_gpu(use_gpu)
 
         # Verbosity parameters
         assert verbosity in ['low', 'medium', 'high', 'snoop', None]
@@ -323,7 +332,8 @@ class AdversarialTraining(object):
 
                 # Build adversarial examples
                 inputs, labels = self._attack_subroutine(attack_parameters,
-                                                         inputs, labels, i)
+                                                         inputs, labels,
+                                                         epoch, i)
 
                 # Now proceed with standard training
                 self.normalizer.differentiable_call()

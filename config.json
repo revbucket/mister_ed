@@ -2,7 +2,7 @@
     "_comment": "===================GENERAL CONFIGS=========================",
     "dataset_path": "~/datasets",
     "model_path": "~/git_repos/mister_ed/pretrained_models/",
-    "batch_size": 16,
+    "batch_size": 128,
     "default_workers": 4,
 
 
