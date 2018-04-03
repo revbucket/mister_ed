@@ -85,8 +85,7 @@ class AdversarialAttackParameters(object):
              adv_examples: Tensor with shape (N'xCxHxW) [the perturbed outputs]
              pre_adv_labels: Tensor with shape (N') [original labels]
              selected_idxs : Tensor with shape (N') [idxs selected]
-        """
-
+        """        
         num_elements = inputs.shape[0]
 
         # SELECT int(self.proportion_attacked * batch_size)

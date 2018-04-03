@@ -37,7 +37,10 @@ class DistModel(BaseModel):
         self.model_name = '%s [%s]'%(model,net)
         if(self.model == 'net-lin'): # pretrained net + linear layer
             self.net = networks.PNetLin(use_gpu=use_gpu,pnet_type=net,use_dropout=True)
-            self.net.load_state_dict(torch.load('./lpips/weights/%s.pth'%net,
+
+            weight_path =  os.path.join(os.path.dirname(__file__), 'weights', '%s.pth' % net)
+
+            self.net.load_state_dict(torch.load(weight_path, 
                                      map_location=self.map_location))
         elif(self.model=='net'): # pretrained network
             self.net = networks.PNet(use_gpu=use_gpu,pnet_type=net)

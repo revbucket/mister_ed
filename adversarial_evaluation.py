@@ -198,7 +198,7 @@ class AdversarialEvaluation(object):
         num_prev_minibatches = 0
         if continue_attack and len(glob.glob(output_file)) != 0:
             # load file and see how many minibatches we went through
-            saved_data = np.load(minibatch_attacks)
+            saved_data = np.load(output_file)
             saved_num_examples = saved_data.shape[0]
             loader_batch_size = data_loader.batch_size
             if saved_num_examples % loader_batch_size != 0:

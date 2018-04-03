@@ -21,9 +21,9 @@ class PerceptualXentropy(lf.RegularizedLoss):
     """ Xentropy loss with a regularization based on perceptual distance """
 
     def __init__(self, classifier, normalizer=None,
-                 regularization_constant=-100.0):
+                 regularization_constant=-100.0, use_gpu=False):
         partial_xentropy = lf.PartialXentropy(classifier, normalizer=normalizer)
-        lpips_reg = lf.LpipsRegularization(None)
+        lpips_reg = lf.LpipsRegularization(None, use_gpu=use_gpu)
 
         super(PerceptualXentropy, self).__init__({'xentropy': partial_xentropy,
                                                   'lpips_reg': lpips_reg},

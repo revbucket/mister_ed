@@ -359,14 +359,15 @@ class LInfPGD(AdversarialAttack):
             rand_noise = (torch.rand(*intermed_images.shape) * l_inf_bound * 2 -
                           torch.ones(*intermed_images.shape) * l_inf_bound)
             rand_noise = rand_noise.type(self._dtype)
-            intermed_images = Variable(rand_noise + intermed_images.data,
-                                       requires_grad=True)
 
+            clipped_init = torch.clamp(rand_noise + intermed_images.data, 0.0, 1.0)
+            intermed_images = Variable(clipped_init, requires_grad=True)
+            
             validator(intermed_images, var_labels, iter_no="RANDOM")
 
+        
         # Start iterating...
         for iter_no in xrange(num_iterations):
-
             # Reset gradients, then take another gradient
             self.loss_fxn.zero_grad()
             loss = self.loss_fxn.forward(intermed_images, var_labels)
@@ -386,7 +387,7 @@ class LInfPGD(AdversarialAttack):
             clamp_inf = utils.clamp_ref(intermed_images.data + perturbation,
                                        examples, l_inf_bound)
             clamp_box = torch.clamp(clamp_inf, 0., 1.)
-            intermed_images = Variable(clamp_box, requires_grad=True)
+            intermed_images = Variable(clamp_box, requires_grad=True)        
             validator(intermed_images, var_labels, iter_no=iter_no)
 
         return intermed_images.data

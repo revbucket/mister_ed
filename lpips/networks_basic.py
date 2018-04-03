@@ -118,6 +118,8 @@ class PNetLin(nn.Module):
                 self.lin6.cuda()
 
     def forward(self, in0, in1):
+
+        
         in0_sc = (in0 - self.shift.expand_as(in0))/self.scale.expand_as(in0)
         in1_sc = (in1 - self.shift.expand_as(in0))/self.scale.expand_as(in0)
 
