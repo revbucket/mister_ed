@@ -192,7 +192,8 @@ class CWLossF6(PartialLoss):
 class ReferenceRegularizer(PartialLoss):
     def __init__(self, fix_im):
         super(ReferenceRegularizer, self).__init__()
-
+        self.fix_im = fix_im
+        
     def setup_attack_batch(self, fix_im):
         """ Setup function to ensure fixed images are set
             has been made; also zeros grads
@@ -208,7 +209,9 @@ class ReferenceRegularizer(PartialLoss):
         """ Cleanup function to clear the fixed images after an attack batch
             has been made; also zeros grads
         """
+        old_fix_im = self.fix_im
         self.fix_im = None
+        del old_fix_im
         self.zero_grad()
 
 
@@ -223,8 +226,9 @@ class L2Regularization(ReferenceRegularizer):
         super(L2Regularization, self).__init__(fix_im)
 
     def forward(self, examples, *args, **kwargs):
-        return img_utils.nchw_l2(examples, self.fix_im,
-                                 squared=True).view(-1, 1)
+        l2_dist = img_utils.nchw_l2(examples, self.fix_im,
+                                    squared=True).view(-1, 1)
+        return torch.sum(l2_dist)
 
 #############################################################################
 #                         LPIPS PERCEPTUAL REGULARIZATION                   #
@@ -236,15 +240,18 @@ class LpipsRegularization(ReferenceRegularizer):
         super(LpipsRegularization, self).__init__(fix_im)
 
         use_gpu = kwargs.get('use_gpu', False)
-        dist_model = dm.DistModel()
-        dist_model.initialize(model='net-lin',net='alex',use_gpu=use_gpu)
-        self.dist_model = dist_model
-        self.nets.append(self.dist_model)
+        self.use_gpu = use_gpu
 
+        
     def forward(self, examples, *args, **kwargs):
+        # return 0
+        dist_model = dm.DistModel()        
+        dist_model.initialize(model='SSIM',net='alex',use_gpu=self.use_gpu, colorspace='Lab')
         xform = lambda im: im * 2.0 - 1.0
-        perceptual_loss = self.dist_model.forward_var(2 * examples - 1.,
-                                                      2 * self.fix_im - 1.)
+        perceptual_loss = dist_model.forward_var(examples,
+                                                 self.fix_im)
+
+        del dist_model
         return perceptual_loss
 
 

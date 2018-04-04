@@ -4,6 +4,7 @@ import torch
 import numpy as np
 import torchvision.transforms as transforms
 import torch.cuda as cuda
+import gc
 
 from torch.autograd import Variable, Function
 
@@ -47,8 +48,7 @@ def safe_tensor(entity):
     else:
         raise Exception("Can't cast %s to a Variable" %
                         entity.__class__.__name__)
-
-
+    
 ##############################################################################
 #                                                                            #
 #                               CONVENIENCE STORE                            #
@@ -145,6 +145,39 @@ def checkpoint_incremental_array(output_file, numpy_list,
     np.save(output_file, concat)
     if return_concat:
         return [concat]
+
+
+
+def sizeof_fmt(num, suffix='B'):
+    """ https://stackoverflow.com/a/1094933
+        answer by Sridhar Ratnakumar """       
+    for unit in ['','Ki','Mi','Gi','Ti','Pi','Ei','Zi']:
+        if abs(num) < 1024.0:
+            return "%3.1f%s%s" % (num, unit, suffix)
+        num /= 1024.0
+    return "%.1f%s%s" % (num, 'Yi', suffix)
+    
+
+def rough_gpu_estimate():
+    """ Roughly estimates the size of the cuda tensors stored on GPUs.
+        If multiple gpus, returns a dict of {GPU_id: total num elements }
+        otherwise just returns the total number of elements
+    """
+    cuda_count = {}
+    listprod = lambda l: reduce(lambda x,y: x * y, l)
+    for el in gc.get_objects():
+        if isinstance(el, (torch.tensor._TensorBase, Variable)) and el.is_cuda:
+            device = el.get_device()
+            cuda_count[device] = (cuda_count.get(device, 0) +
+                                  listprod(el.size()))
+
+    if len(cuda_count.keys()) == 0:
+        return 0
+    elif len(cuda_count.keys()) == 1:
+        return sizeof_fmt(cuda_count.values()[0])
+    else:
+        return {k: sizeof_fmt(v) for k, v in cuda_count.items()}
+
 
 
 ##############################################################################
