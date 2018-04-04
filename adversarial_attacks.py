@@ -305,6 +305,8 @@ class LInfPGD(AdversarialAttack):
                       l_inf_bound, reference_var):
 
         self.loss_fxn.zero_grad()
+        assert self.loss_fxn.losses['lpips_reg'].fix_im is not None
+        assert intermed_images is not None
         loss = self.loss_fxn.forward(intermed_images, var_labels)
 
         if torch.numel(loss) > 1:
@@ -320,10 +322,10 @@ class LInfPGD(AdversarialAttack):
             perturbation = intermed_images.grad.data * step_size
 
         clamp_inf = utils.clamp_ref(intermed_images.data + perturbation,
-                                   reference_var, l_inf_bound)
+                                   reference_var.data, l_inf_bound)
         clamp_box = torch.clamp(clamp_inf, 0., 1.)
         intermed_images = Variable(clamp_box, requires_grad=True)
-
+        return Variable(intermed_images.data, requires_grad=True)
 
 
     def attack(self, examples, labels, l_inf_bound=0.05, step_size=1/255.0,

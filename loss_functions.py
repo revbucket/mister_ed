@@ -240,15 +240,18 @@ class LpipsRegularization(ReferenceRegularizer):
         super(LpipsRegularization, self).__init__(fix_im)
 
         use_gpu = kwargs.get('use_gpu', False)
-        dist_model = dm.DistModel()
-        dist_model.initialize(model='net-lin',net='alex',use_gpu=use_gpu)
-        self.dist_model = dist_model
-        self.nets.append(self.dist_model)
+        self.use_gpu = use_gpu
 
+        
     def forward(self, examples, *args, **kwargs):
+        # return 0
+        dist_model = dm.DistModel()        
+        dist_model.initialize(model='SSIM',net='alex',use_gpu=self.use_gpu, colorspace='Lab')
         xform = lambda im: im * 2.0 - 1.0
-        perceptual_loss = self.dist_model.forward_var(2 * examples - 1.,
-                                                      2 * self.fix_im - 1.)
+        perceptual_loss = dist_model.forward_var(examples,
+                                                 self.fix_im)
+
+        del dist_model
         return perceptual_loss
 
 
