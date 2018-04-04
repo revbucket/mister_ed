@@ -301,6 +301,30 @@ class LInfPGD(AdversarialAttack):
                                       use_gpu=use_gpu)
         self.loss_fxn = loss_fxn
 
+    def _do_iteration(self, intermed_images, var_labels, signed, step_size,
+                      l_inf_bound, reference_var):
+
+        self.loss_fxn.zero_grad()
+        loss = self.loss_fxn.forward(intermed_images, var_labels)
+
+        if torch.numel(loss) > 1:
+            torch.autograd.backward([loss],
+                                    grad_variables=[intermed_images])
+        else:
+            torch.autograd.backward(loss)
+
+        # Take a step and 'project'
+        if signed:
+            perturbation = torch.sign(intermed_images.grad.data) * step_size
+        else:
+            perturbation = intermed_images.grad.data * step_size
+
+        clamp_inf = utils.clamp_ref(intermed_images.data + perturbation,
+                                   reference_var, l_inf_bound)
+        clamp_box = torch.clamp(clamp_inf, 0., 1.)
+        intermed_images = Variable(clamp_box, requires_grad=True)
+
+
 
     def attack(self, examples, labels, l_inf_bound=0.05, step_size=1/255.0,
                num_iterations=None, random_init=False, signed=True,
@@ -345,52 +369,37 @@ class LInfPGD(AdversarialAttack):
         var_examples = Variable(examples, requires_grad=True)
         var_labels = Variable(labels, requires_grad=False)
 
-        self.loss_fxn.setup_attack_batch(var_examples.clone())
+        reference_var = Variable(examples.clone(), requires_grad=False)
+        self.loss_fxn.setup_attack_batch(reference_var)
 
         ##################################################################
         #   Build adversarial examples                                   #
         ##################################################################
 
-        intermed_images = var_examples
-        validator(intermed_images, var_labels, iter_no="START")
+        validator(var_examples, var_labels, iter_no="START")
 
         # random initialization if necessary
         if random_init:
-            rand_noise = (torch.rand(*intermed_images.shape) * l_inf_bound * 2 -
-                          torch.ones(*intermed_images.shape) * l_inf_bound)
+            rand_noise = (torch.rand(*var_examples.shape) * l_inf_bound * 2 -
+                          torch.ones(*var_examples.shape) * l_inf_bound)
             rand_noise = rand_noise.type(self._dtype)
 
-            clipped_init = torch.clamp(rand_noise + intermed_images.data, 0.0, 1.0)
-            intermed_images = Variable(clipped_init, requires_grad=True)
-            
-            validator(intermed_images, var_labels, iter_no="RANDOM")
+            clipped_init = torch.clamp(rand_noise + var_examples.data,
+                                       0.0, 1.0)
+            var_examples = Variable(clipped_init, requires_grad=True)
 
-        
+            validator(var_examples, var_labels, iter_no="RANDOM")
+
+
         # Start iterating...
         for iter_no in xrange(num_iterations):
             # Reset gradients, then take another gradient
-            self.loss_fxn.zero_grad()
-            loss = self.loss_fxn.forward(intermed_images, var_labels)
+            var_examples = self._do_iteration(var_examples, var_labels, signed,
+                                              step_size, l_inf_bound,
+                                              reference_var)
+            validator(var_examples, var_labels, iter_no=iter_no)
 
-            if torch.numel(loss) > 1:
-                torch.autograd.backward([loss],
-                                        grad_variables=[intermed_images])
-            else:
-                torch.autograd.backward(loss)
-
-            # Take a step and 'project'
-            if signed:
-                perturbation = torch.sign(intermed_images.grad.data) * step_size
-            else:
-                perturbation = intermed_images.grad.data * step_size
-
-            clamp_inf = utils.clamp_ref(intermed_images.data + perturbation,
-                                       examples, l_inf_bound)
-            clamp_box = torch.clamp(clamp_inf, 0., 1.)
-            intermed_images = Variable(clamp_box, requires_grad=True)        
-            validator(intermed_images, var_labels, iter_no=iter_no)
-
-        return intermed_images.data
+        return var_examples.data
 
 
 ############################################################################

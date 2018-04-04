@@ -243,8 +243,8 @@ class LpipsRegularization(ReferenceRegularizer):
 
     def forward(self, examples, *args, **kwargs):
         xform = lambda im: im * 2.0 - 1.0
-        perceptual_loss = self.dist_model.forward_var(xform(examples),
-                                                      xform(self.fix_im))
+        perceptual_loss = self.dist_model.forward_var(2 * examples - 1.,
+                                                      2 * self.fix_im - 1.)
         return perceptual_loss
 
 
