@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch
 from numbers import Number
 import utils.image_utils as img_utils
-
+from custom_lpips import custom_dist_model as cdm
 """ Loss function building blocks """
 
 ##############################################################################
@@ -241,17 +241,14 @@ class LpipsRegularization(ReferenceRegularizer):
 
         use_gpu = kwargs.get('use_gpu', False)
         self.use_gpu = use_gpu
-
+        self.dist_model = cdm.DistModel(net='alex', use_gpu=self.use_gpu)
         
     def forward(self, examples, *args, **kwargs):
-        # return 0
-        dist_model = dm.DistModel()        
-        dist_model.initialize(model='SSIM',net='alex',use_gpu=self.use_gpu, colorspace='Lab')
+        # return 0        
         xform = lambda im: im * 2.0 - 1.0
-        perceptual_loss = dist_model.forward_var(examples,
-                                                 self.fix_im)
-
-        del dist_model
+        perceptual_loss = self.dist_model.forward_var(examples,
+                                                      self.fix_im)
+        
         return perceptual_loss
 
 
