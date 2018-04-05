@@ -7,7 +7,7 @@ import torch.cuda as cuda
 import gc
 
 from torch.autograd import Variable, Function
-
+import subprocess
 
 
 ###############################################################################
@@ -48,7 +48,7 @@ def safe_tensor(entity):
     else:
         raise Exception("Can't cast %s to a Variable" %
                         entity.__class__.__name__)
-    
+
 ##############################################################################
 #                                                                            #
 #                               CONVENIENCE STORE                            #
@@ -150,13 +150,35 @@ def checkpoint_incremental_array(output_file, numpy_list,
 
 def sizeof_fmt(num, suffix='B'):
     """ https://stackoverflow.com/a/1094933
-        answer by Sridhar Ratnakumar """       
+        answer by Sridhar Ratnakumar """
     for unit in ['','Ki','Mi','Gi','Ti','Pi','Ei','Zi']:
         if abs(num) < 1024.0:
             return "%3.1f%s%s" % (num, unit, suffix)
         num /= 1024.0
     return "%.1f%s%s" % (num, 'Yi', suffix)
-    
+
+
+###############################################################################
+#                                                                             #
+#                               CUDA RELATED THINGS                           #
+#                                                                             #
+###############################################################################
+
+# fxn taken from https://discuss.pytorch.org/t/memory-leaks-in-trans-conv/12492
+def get_gpu_memory_map():
+    try:
+        result = subprocess.check_output(
+            [
+                'nvidia-smi', '--query-gpu=memory.used',
+                '--format=csv,nounits,noheader'
+            ])
+    except:
+        result = "<CAN'T GET GPU MEM>"
+    try:
+        return float(result)
+    except:
+        return result
+
 
 def rough_gpu_estimate():
     """ Roughly estimates the size of the cuda tensors stored on GPUs.

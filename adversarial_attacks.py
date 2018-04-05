@@ -395,6 +395,11 @@ class LInfPGD(AdversarialAttack):
 
         # Start iterating...
         for iter_no in xrange(num_iterations):
+            import time
+            time.sleep(2)
+            print "iter_no: %s" % iter_no
+            print "gpu_mem: %s" % utils.get_gpu_memory_map()
+
             # Reset gradients, then take another gradient
             var_examples = self._do_iteration(var_examples, var_labels, signed,
                                               step_size, l_inf_bound,
