@@ -39,7 +39,8 @@ def load_pretrained_cifar_resnet(flavor=32, use_gpu=False):
     # Resolve load path
     valid_flavor_numbers = [110, 1202, 20, 32, 44, 56]
     assert flavor in valid_flavor_numbers
-    weight_path = os.path.join(RESNET_WEIGHT_PATH, 'resnet%s.th' % flavor)
+    weight_path = os.path.join(RESNET_WEIGHT_PATH,
+                               'cifar10_resnet%s.th' % flavor)
 
 
     # Resolve CPU/GPU stuff
@@ -86,7 +87,7 @@ def load_cifar_data(train_or_val, extra_args=None, dataset_dir=None,
                             in the iterator
         shuffle: boolean - if True, we load the data in a shuffled order
         no_transform: boolean - if True, we don't do any random cropping/
-                                reflections of the data 
+                                reflections of the data
     """
 
     ##################################################################

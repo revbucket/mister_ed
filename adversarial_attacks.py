@@ -6,7 +6,7 @@ import utils.pytorch_utils as utils
 import utils.image_utils as img_utils
 import random
 import sys
-import lpips.dist_model as dm
+import custom_lpips.custom_dist_model as dm
 
 MAXFLOAT = 1e20
 

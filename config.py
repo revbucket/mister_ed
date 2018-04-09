@@ -3,10 +3,10 @@
 import json
 import os
 
-config_path = os.path.join(os.path.dirname(__file__), 'config.json')
+config_path = os.path.abspath(os.path.join(os.path.dirname(__file__),
+                                           'config.json'))
 config_dir = os.path.dirname(config_path)
 config_dict = json.loads(open(config_path, 'rb').read())
-
 
 def path_resolver(path):
     if path.startswith('~/'):
