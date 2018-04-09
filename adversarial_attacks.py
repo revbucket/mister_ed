@@ -183,19 +183,20 @@ class FGSM(AdversarialAttack):
         loss = self.loss_fxn.forward(var_examples, var_labels)
 
         if torch.numel(loss) > 1:
-            torch.autograd.backward([loss], grad_variables=[var_examples])
+            loss = torch.sum(loss)
+            torch.autograd.backward(loss)
+            # torch.autograd.backward([loss], grad_variables=[var_examples])
         else:
             torch.autograd.backward(loss)
 
-
         # add adversarial noise and clamp to 0.0, 1.0 range
         signs = l_inf_bound * torch.sign(var_examples.grad.data)
-        adversarial_examples = Variable(torch.clamp(examples + signs, 0, 1))
+        adversarial_examples = torch.clamp(examples + signs, 0, 1)
 
 
         # output tensor with the data
         self.loss_fxn.cleanup_attack_batch()
-        return adversarial_examples.data
+        return adversarial_examples
 
 
 
@@ -305,13 +306,13 @@ class LInfPGD(AdversarialAttack):
                       l_inf_bound, reference_var):
 
         self.loss_fxn.zero_grad()
-        assert self.loss_fxn.losses['lpips_reg'].fix_im is not None
-        assert intermed_images is not None
         loss = self.loss_fxn.forward(intermed_images, var_labels)
-
+        
         if torch.numel(loss) > 1:
-            torch.autograd.backward([loss],
-                                    grad_variables=[intermed_images])
+            loss = torch.sum(loss)
+            torch.autograd.backward(loss)
+            #torch.autograd.backward([loss],
+            #                        grad_variables=[intermed_images])
         else:
             torch.autograd.backward(loss)
 
@@ -372,6 +373,7 @@ class LInfPGD(AdversarialAttack):
         var_labels = Variable(labels, requires_grad=False)
 
         reference_var = Variable(examples.clone(), requires_grad=False)
+
         self.loss_fxn.setup_attack_batch(reference_var)
 
         ##################################################################
@@ -395,17 +397,11 @@ class LInfPGD(AdversarialAttack):
 
         # Start iterating...
         for iter_no in xrange(num_iterations):
-            import time
-            time.sleep(2)
-            print "iter_no: %s" % iter_no
-            print "gpu_mem: %s" % utils.get_gpu_memory_map()
-
             # Reset gradients, then take another gradient
             var_examples = self._do_iteration(var_examples, var_labels, signed,
                                               step_size, l_inf_bound,
                                               reference_var)
             validator(var_examples, var_labels, iter_no=iter_no)
-
         return var_examples.data
 
 
