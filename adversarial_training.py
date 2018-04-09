@@ -13,7 +13,7 @@ import random
 import utils.pytorch_utils as utils
 import utils.image_utils as img_utils
 import adversarial_attacks as attacks
-import checkpoints
+import utils.checkpoints as checkpoints
 
 
 ##############################################################################
@@ -85,7 +85,7 @@ class AdversarialAttackParameters(object):
              adv_examples: Tensor with shape (N'xCxHxW) [the perturbed outputs]
              pre_adv_labels: Tensor with shape (N') [original labels]
              selected_idxs : Tensor with shape (N') [idxs selected]
-        """        
+        """
         num_elements = inputs.shape[0]
 
         # SELECT int(self.proportion_attacked * batch_size)
@@ -281,9 +281,9 @@ class AdversarialTraining(object):
             use_gpu : bool - if True, we use GPU's for things
             verbosity : string - must be 'low', 'medium', 'high', which
                         describes how much to print
-            starting_epoch : int - which epoch number we start on. Is useful 
-                             for correct labeling of checkpoints and figuring 
-                             out how many epochs we actually need to run for 
+            starting_epoch : int - which epoch number we start on. Is useful
+                             for correct labeling of checkpoints and figuring
+                             out how many epochs we actually need to run for
                              (i.e., num_epochs - starting_epoch)
         RETURNS:
             None, but modifies the classifier_net's weights
@@ -375,19 +375,19 @@ class AdversarialTraining(object):
         return
 
 
-    def train_from_checkpoint(self, data_loader, num_epochs, loss_fxn, 
-                              optimizer=None, attack_parameters=None, 
-                              use_gpu=False, verbosity='medium', 
+    def train_from_checkpoint(self, data_loader, num_epochs, loss_fxn,
+                              optimizer=None, attack_parameters=None,
+                              use_gpu=False, verbosity='medium',
                               starting_epoch='max'):
         """ Resumes training from a saved checkpoint with the same architecture.
-            i.e. loads weights from specified checkpoint, figures out which 
-                 epoch we checkpointed on and then continues training until 
+            i.e. loads weights from specified checkpoint, figures out which
+                 epoch we checkpointed on and then continues training until
                  we reach num_epochs epochs
-        ARGS: 
+        ARGS:
             same as in train
             starting_epoch: 'max' or int - which epoch we start training from.
-                             'max' means the highest epoch we can find, 
-                             an int means a specified int epoch exactly. 
+                             'max' means the highest epoch we can find,
+                             an int means a specified int epoch exactly.
         RETURNS:
             None
         """
@@ -395,7 +395,7 @@ class AdversarialTraining(object):
         ######################################################################
         #   Checkpoint handling block                                        #
         ######################################################################
-        # which epoch to load 
+        # which epoch to load
         valid_epochs = checkpoints.list_saved_epochs(self.experiment_name,
                                                      self.architecture_name)
         assert valid_epochs != []
@@ -405,7 +405,7 @@ class AdversarialTraining(object):
             assert starting_epoch in valid_epochs
             epoch = starting_epoch
 
-        # modify the classifer to use these weights 
+        # modify the classifer to use these weights
 
         self.classifier_net = checkpoints.load_state_dict(self.experiment_name,
                                                          self.architecture_name,
@@ -415,13 +415,13 @@ class AdversarialTraining(object):
         ######################################################################
         #   Training block                                                   #
         ######################################################################
-        
-        self.train(data_loader, num_epochs, loss_fxn, 
-                   optimizer=optimizer, 
+
+        self.train(data_loader, num_epochs, loss_fxn,
+                   optimizer=optimizer,
                    attack_parameters=attack_parameters,
-                   use_gpu=use_gpu, 
-                   verbosity=verbosity, 
+                   use_gpu=use_gpu,
+                   verbosity=verbosity,
                    starting_epoch=epoch)
 
-        
+
 

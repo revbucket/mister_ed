@@ -187,6 +187,11 @@ class CWLossF6(PartialLoss):
     original images.
     example: L2 regularization which computes L2dist between a perturbed image
              and the FIXED ORIGINAL IMAGE
+
+    NOTE: it's important that these return Variables that are scalars
+    (output.numel() == 1), otherwise there's a memory leak w/ CUDA.
+    See my discussion on this here:
+        https://discuss.pytorch.org/t/cuda-memory-not-being-freed/15965
 """
 
 class ReferenceRegularizer(PartialLoss):
