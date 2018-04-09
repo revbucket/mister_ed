@@ -62,7 +62,6 @@ def file_hash(filename):
 
 
 
-
 def load_cifar_classifiers():
     print "Checking CIFAR10 classifier exists..."
 
@@ -85,9 +84,15 @@ def load_cifar_classifiers():
                          glob.glob(os.path.join(*[config.MODEL_PATH, '*']))])
 
     lacking_models = total_cifar_files - extant_models
-    dropbox_linker = lambda s: 'https://www.dropbox.com/s/jce5t3ysr555wqo/%s?dl=1' % s
 
-    LINK_DEPOT = {k: dropbox_linker(k) for k in lacking_models}
+    LINK_DEPOT = {resnet_name(20)  : 'https://www.dropbox.com/s/v8w4bxhigr3m61c/cifar10_resnet20.th?dl=1',
+                  resnet_name(32)  : 'https://www.dropbox.com/s/t1jn1v1q1bx6pfy/cifar10_resnet32.th?dl=1',
+                  resnet_name(44)  : 'https://www.dropbox.com/s/k77fz4zfgttxv01/cifar10_resnet44.th?dl=1',
+                  resnet_name(56)  : 'https://www.dropbox.com/s/ztg4tsjfj35z9qz/cifar10_resnet56.th?dl=1',
+                  resnet_name(110) : 'https://www.dropbox.com/s/n04ceqixujvhw20/cifar10_resnet110.th?dl=1',
+                  resnet_name(1202): 'https://www.dropbox.com/s/we557k1o2mpq4up/cifar10_resnet1202.th?dl=1'
+                }
+
 
     HASH_DEPOT = {resnet_name(20)  : '12fca82f0bebc4135bf1f32f6e3710e61d5108578464b84fd6d7f5c1b04036c8',
                   resnet_name(32)  : 'd509ac1820d7f25398913559d7e81a13229b1e7adc5648e3bfa5e22dc137f850',
@@ -96,8 +101,8 @@ def load_cifar_classifiers():
                   resnet_name(110) : '1d1ed7c27571399c1fef66969bc4df68d6a92c8e6c41170f444e120e5354e3bc',
                   resnet_name(1202): 'f3b1deed382cd4c986ff8aa090c805d99a646e99d1f9227d7178183648844f62'}
 
-
-    for name, link in LINK_DEPOT.iteritems():
+    for name in lacking_models:
+        link = LINK_DEPOT[name]
         print "Downloading %s..." % name
         u = urllib2.urlopen(link)
         data = u.read()
@@ -106,8 +111,12 @@ def load_cifar_classifiers():
         with open(filename, 'wb') as f:
             f.write(data)
 
-        assert file_hash(filename) == HASH_DEPOT[name]
-
+        try:
+            assert file_hash(filename) == HASH_DEPOT[name]
+        except AssertionError, err:
+            print "Something went wrong downloading %s" % name
+            os.remove(filename)
+            raise err
 
     # Then load up all that doesn't already exist
 
