@@ -193,7 +193,7 @@ class ReferenceRegularizer(PartialLoss):
     def __init__(self, fix_im):
         super(ReferenceRegularizer, self).__init__()
         self.fix_im = fix_im
-        
+
     def setup_attack_batch(self, fix_im):
         """ Setup function to ensure fixed images are set
             has been made; also zeros grads
@@ -242,14 +242,12 @@ class LpipsRegularization(ReferenceRegularizer):
         use_gpu = kwargs.get('use_gpu', False)
         self.use_gpu = use_gpu
         self.dist_model = dm.DistModel(net='alex', use_gpu=self.use_gpu)
-        
-    def forward(self, examples, *args, **kwargs):
-        # return 0
 
+    def forward(self, examples, *args, **kwargs):
         xform = lambda im: im * 2.0 - 1.0
         perceptual_loss = self.dist_model.forward_var(examples,
                                                       self.fix_im)
-        return perceptual_loss
+        return torch.sum(perceptual_loss)
 
 
 

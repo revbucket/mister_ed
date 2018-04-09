@@ -1,7 +1,5 @@
 """ Holds the various attacks we can do """
 import torch
-import torch.nn as nn
-import numpy as np
 from torch.autograd import Variable, Function
 from torch import optim
 import utils.pytorch_utils as utils
@@ -21,6 +19,7 @@ class AdversarialAttack(object):
         self.classifier_net = classifier_net
         self.normalizer = normalizer or utils.IdentityNormalize()
         self.use_gpu = use_gpu
+        self.validator = lambda *args: None
 
     @property
     def _dtype(self):
@@ -164,7 +163,7 @@ class FGSM(AdversarialAttack):
         RETURNS:
             adv_examples: NxCxWxH tensor with adversarial examples
 
-            """
+        """
 
         assert 0 < l_inf_bound < 1.0
         self.classifier_net.eval() # ALWAYS EVAL FOR BUILDING ADV EXAMPLES
@@ -181,13 +180,7 @@ class FGSM(AdversarialAttack):
 
         # take gradients and step
         loss = self.loss_fxn.forward(var_examples, var_labels)
-
-        if torch.numel(loss) > 1:
-            loss = torch.sum(loss)
-            torch.autograd.backward(loss)
-            # torch.autograd.backward([loss], grad_variables=[var_examples])
-        else:
-            torch.autograd.backward(loss)
+        torch.autograd.backward(loss)
 
         # add adversarial noise and clamp to 0.0, 1.0 range
         signs = l_inf_bound * torch.sign(var_examples.grad.data)
@@ -246,9 +239,9 @@ class BIM(AdversarialAttack):
                                                  l_inf_bound * 255 * 1.25]) + 1)
 
         if not verbose:
-            validator = lambda ex, label, iter_no: None
+            self.validator = lambda ex, label, iter_no: None
         else:
-            validator = self.validation_loop
+            self.validator = self.validation_loop
 
         self.classifier_net.eval() # ALWAYS EVAL FOR BUILDING ADV EXAMPLES
         var_examples = Variable(examples,requires_grad=True)
@@ -261,7 +254,7 @@ class BIM(AdversarialAttack):
         ######################################################################
 
         intermed_images = var_examples
-        validator(intermed_images, var_labels, iter_no="START")
+        self.validator(intermed_images, var_labels, iter_no="START")
 
         # Start iterating...
         for iter_no in xrange(num_iterations):
@@ -269,11 +262,8 @@ class BIM(AdversarialAttack):
             # Reset gradients, then take another gradient
             self.loss_fxn.zero_grad()
             loss = self.loss_fxn.forward(intermed_images, var_labels)
-            if torch.numel(loss) > 1:
-                torch.autograd.backward([loss],
-                                        grad_variables=[intermed_images])
-            else:
-                torch.autograd.backward(loss)
+
+            torch.autograd.backward(loss)
 
             # Take a step and then clamp
             signs = torch.sign(intermed_images.grad.data) * step_size
@@ -283,7 +273,7 @@ class BIM(AdversarialAttack):
 
             # Setup for next
             intermed_images = Variable(clamp_box, requires_grad=True)
-            validator(intermed_images, var_labels, iter_no=iter_no)
+            self.validator(intermed_images, var_labels, iter_no=iter_no)
 
 
         return intermed_images.data
@@ -307,14 +297,7 @@ class LInfPGD(AdversarialAttack):
 
         self.loss_fxn.zero_grad()
         loss = self.loss_fxn.forward(intermed_images, var_labels)
-        
-        if torch.numel(loss) > 1:
-            loss = torch.sum(loss)
-            torch.autograd.backward(loss)
-            #torch.autograd.backward([loss],
-            #                        grad_variables=[intermed_images])
-        else:
-            torch.autograd.backward(loss)
+        torch.autograd.backward(loss)
 
         # Take a step and 'project'
         if signed:
@@ -327,6 +310,26 @@ class LInfPGD(AdversarialAttack):
         clamp_box = torch.clamp(clamp_inf, 0., 1.)
         intermed_images = Variable(clamp_box, requires_grad=True)
         return Variable(intermed_images.data, requires_grad=True)
+
+
+    def _random_init(self, var_examples, l_inf_bound):
+        """ Returns a tensor with a random perturbation within the l_inf
+            bound of the original
+        ARGS:
+            examples : NxCxHxW Variable - original images
+            l_inf_bound : float - how much we can perturb each pixel by
+        RETURNS:
+            NxCxHxW Varialbe on the same device as the original,
+        """
+        rand_noise = (torch.rand(*var_examples.shape) * l_inf_bound * 2 -
+                      torch.ones(*var_examples.shape) * l_inf_bound)
+        rand_noise = rand_noise.type(self._dtype)
+
+        clipped_init = torch.clamp(rand_noise + var_examples.data,
+                                   0.0, 1.0)
+
+        var_examples = Variable(clipped_init, requires_grad=True)
+        return var_examples
 
 
     def attack(self, examples, labels, l_inf_bound=0.05, step_size=1/255.0,
@@ -365,9 +368,9 @@ class LInfPGD(AdversarialAttack):
         self.classifier_net.eval() # ALWAYS EVAL FOR BUILDING ADV EXAMPLES
 
         if not verbose:
-            validator = lambda ex, label, iter_no: None
+            self.validator = lambda ex, label, iter_no: None
         else:
-            validator = self.validation_loop
+            self.validator = self.validation_loop
 
         var_examples = Variable(examples, requires_grad=True)
         var_labels = Variable(labels, requires_grad=False)
@@ -380,20 +383,12 @@ class LInfPGD(AdversarialAttack):
         #   Build adversarial examples                                   #
         ##################################################################
 
-        validator(var_examples, var_labels, iter_no="START")
+        self.validator(var_examples, var_labels, iter_no="START")
 
         # random initialization if necessary
         if random_init:
-            rand_noise = (torch.rand(*var_examples.shape) * l_inf_bound * 2 -
-                          torch.ones(*var_examples.shape) * l_inf_bound)
-            rand_noise = rand_noise.type(self._dtype)
-
-            clipped_init = torch.clamp(rand_noise + var_examples.data,
-                                       0.0, 1.0)
-            var_examples = Variable(clipped_init, requires_grad=True)
-
-            validator(var_examples, var_labels, iter_no="RANDOM")
-
+            var_examples = self._random_init(var_examples, l_inf_bound)
+            self.validator(var_examples, var_labels, iter_no="RANDOM")
 
         # Start iterating...
         for iter_no in xrange(num_iterations):
@@ -401,7 +396,7 @@ class LInfPGD(AdversarialAttack):
             var_examples = self._do_iteration(var_examples, var_labels, signed,
                                               step_size, l_inf_bound,
                                               reference_var)
-            validator(var_examples, var_labels, iter_no=iter_no)
+            self.validator(var_examples, var_labels, iter_no=iter_no)
         return var_examples.data
 
 

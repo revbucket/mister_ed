@@ -369,5 +369,5 @@ def main_evaluation_script():
 
 
 if __name__ == '__main__':
-    pass
+    main_attack_script(['FGSM'], show_images=True)
 
