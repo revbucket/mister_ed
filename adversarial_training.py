@@ -166,6 +166,24 @@ class AdversarialTraining(object):
 
     def __init__(self, classifier_net, normalizer,
                  experiment_name, architecture_name):
+
+        """
+        ARGS:
+        classifier_net : nn.Module subclass - instance of neural net to classify
+                         images. Can have already be trained, or not
+        normalizer : DifferentiableNormalize - object to convert to zero-mean
+                     unit-variance domain
+        experiment_name : String - na
+
+        ON NOMENCLATURE:
+        Depending on verbosity levels, training checkpoints are saved after
+        some training epochs. These are saved as
+        '<experiment_name>/<architecture_name>/<epoch>.path.tar'
+
+        Best practice is to keep architecture_name consistent across
+        adversarially trained models built off the same architecture and having
+        a descriptive experiment_name for each training instance
+        """
         self.classifier_net =classifier_net
         self.normalizer = normalizer
         self.experiment_name = experiment_name

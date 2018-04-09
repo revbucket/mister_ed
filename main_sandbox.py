@@ -14,7 +14,6 @@ import cifar10.cifar_resnets as cifar_resnets
 import adversarial_attacks as aa
 import adversarial_training as advtrain
 
-import interact
 
 BATCH_SIZE = config.DEFAULT_BATCH_SIZE
 WORKERS = config.DEFAULT_WORKERS

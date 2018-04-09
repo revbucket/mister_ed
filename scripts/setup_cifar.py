@@ -71,9 +71,16 @@ def load_cifar_classifiers():
 
     LINK_DEPOT = {k: dropbox_linker(k) for k in lacking_models}
 
-    for name, link in LINK_DEPOT.iteritems():
 
+
+    for name, link in LINK_DEPOT.iteritems():
         print "Downloading %s..." % name
+        try:
+            os.makedirs(path)
+        except OSError:
+            if not os.path.isdir(path):
+            raise
+
         u = urllib2.urlopen(link)
         data = u.read()
         u.close()
