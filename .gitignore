@@ -11,6 +11,9 @@ output_images/*
 !output_images/ # pretrained models shouldn't live on github
 output_images/*
 
+#notebooks should be ignored except for a few basic ones
+notebooks/*
+!notebooks/main_sandbox.ipynb
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
