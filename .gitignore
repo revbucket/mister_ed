@@ -1,5 +1,6 @@
 # standard gitignore, copied from https://github.com/github/gitignore
 
+.DS_Store # OSX stuff
 config.json # Don't push configs around the repo
 
 !pretrained_models/ # pretrained models shouldn't live on github
