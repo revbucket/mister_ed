@@ -81,7 +81,6 @@ class AdversarialEvaluation(object):
         
         for i, data in enumerate(data_loader, 0):
             print "Starting minibatch %s..." % i
-            print "GPU Size is %s " % utils.rough_gpu_estimate()
             if num_minibatches is not None and i >= num_minibatches:
                 break
 
