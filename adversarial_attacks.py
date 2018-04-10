@@ -430,63 +430,64 @@ class AltPGD(LInfPGD):
                step_size=1.0/255.0, fro_scale=0.9, num_iterations=20,
                random_init=True, signed=True, verbose=True):
 
-    assert 0.0 <= l_inf_bound <= 1.0
+        assert 0.0 <= l_inf_bound <= 1.0
 
-    if not verbose:
-        self.validator = lambda ex, label, iter_no: None
-    else:
-        self.validator = self.validation_loop
-
-
-    self.classifier_net.eval()
-    var_examples = Variable(examples, requires_grad=True)
-    var_labels = Variable(labels, requires_grad=False)
-
-    [loss.setup_attack_batch(var_examples.clone()) for loss in self.losses]
-
-    ##########################################################################
-    #   Build adversarial examples                                           #
-    ##########################################################################
-
-    intermed_images = var_examples
-
-    if random_init:
-        var_examples = self._random_init(var_examples, l_inf_bound)
-        self.validator(var_examples, var_labels, iter_no="RANDOM")
-
-    # start iterating
-    for iter_no in xrange(num_iterations):
-        # Reset gradients
-        [loss.zero_grad() for loss in self.losses()]
-
-        # to step
-        to_loss = self.to_loss_fxn(intermed_images, var_labels)
-
-        torch.autograd.backward(to_loss)
-
-        signs = torch.sign(intermed_images.grad.data) * step_size
-        clamp_inf = utils.clamp_ref(intermed_images.data + signs, examples,
-                                    l_inf_bound)
-        clamp_box = torch.clamp(clamp_inf, 0., 1.)
-
-        intermed_images = Variable(clamp_box, requires_grad=True)
-        [loss.zero_grad() for loss in self.losses()]
-
-        # fro step
-
-        fro_loss = self.fro_loss_fxn(intermed_images, var_labels)
-        torch.autograd.backward(fro_loss)
-
-        signs = torch.sign(intermed_images.grad.data) * step_size * fro_scale
-        clamp_inf = utils.clamp_ref(intermed_images.data - signs, examples,
-                                    l_inf_bound)
-        clamp_box = torch.clamp(clamp_inf, 0., 1.0)
-
-        intermed_images = Variable(clamp_box, requires_grad=True)
-        self.validator(intermed_images, var_labels, iter_no=iter_no)
+        if not verbose:
+            self.validator = lambda ex, label, iter_no: None
+        else:
+            self.validator = self.validation_loop
 
 
-    return intermed_images.data
+        self.classifier_net.eval()
+        var_examples = Variable(examples, requires_grad=True)
+        var_labels = Variable(labels, requires_grad=False)
+
+        [loss.setup_attack_batch(var_examples.clone()) for loss in self.losses]
+
+        #####################################################################
+        #   Build adversarial examples                                      #
+        #####################################################################
+
+        intermed_images = var_examples
+
+        if random_init:
+            var_examples = self._random_init(var_examples, l_inf_bound)
+            self.validator(var_examples, var_labels, iter_no="RANDOM")
+
+        # start iterating
+        for iter_no in xrange(num_iterations):
+            # Reset gradients
+            [loss.zero_grad() for loss in self.losses()]
+
+            # to step
+            to_loss = self.to_loss_fxn(intermed_images, var_labels)
+
+            torch.autograd.backward(to_loss)
+
+            signs = torch.sign(intermed_images.grad.data) * step_size
+            clamp_inf = utils.clamp_ref(intermed_images.data + signs, examples,
+                                        l_inf_bound)
+            clamp_box = torch.clamp(clamp_inf, 0., 1.)
+
+            intermed_images = Variable(clamp_box, requires_grad=True)
+            [loss.zero_grad() for loss in self.losses()]
+
+            # fro step
+
+            fro_loss = self.fro_loss_fxn(intermed_images, var_labels)
+            torch.autograd.backward(fro_loss)
+
+            signs = (torch.sign(intermed_images.grad.data) * step_size *
+                     fro_scale)
+            clamp_inf = utils.clamp_ref(intermed_images.data - signs, examples,
+                                        l_inf_bound)
+            clamp_box = torch.clamp(clamp_inf, 0., 1.0)
+
+            intermed_images = Variable(clamp_box, requires_grad=True)
+            self.validator(intermed_images, var_labels, iter_no=iter_no)
+
+
+        return intermed_images.data
 
 
 
