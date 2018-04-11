@@ -35,7 +35,7 @@ def main_attack_script(attack_examples=None,
                        use_gpu=False):
 
     # Which attacks to do...
-    attack_examples = attack_examples or ['FGSM', 'BIM', 'PGD', 'CW2']
+    attack_examples = attack_examples or ['FGSM', 'BIM', 'PGD', 'CW2', 'CWLInf']
 
     ########################################################################
     #   SHARED BLOCK                                                       #
@@ -48,6 +48,7 @@ def main_attack_script(attack_examples=None,
 
     # Collect one minibatch worth of data/targets
     val_loader = cifar_loader.load_cifar_data('val', normalize=False,
+                                              batch_size=128,
                                               use_gpu=use_gpu)
     ex_minibatch, ex_targets = next(iter(val_loader))
 
@@ -190,7 +191,7 @@ def main_attack_script(attack_examples=None,
 
 
     ##########################################################################
-    #   CW ATTACK                                                            #
+    #   CW L2 ATTACK                                                         #
     ##########################################################################
 
     if 'CWL2' in attack_examples:
@@ -204,19 +205,19 @@ def main_attack_script(attack_examples=None,
         #   4) perform attack
         #   5) evaluate attack
 
-        CWL2_INITIAL_SCALE_CONSTANT = 0.1
-        CWL2_NUM_BIN_SEARCH_STEPS = 5
-        CWL2_NUM_OPTIM_STEPS = 1000
-        CWL2_DISTANCE_METRIC = 'l2'
-        CWL2_CONFIDENCE = 0.0
+        CW_INITIAL_SCALE_CONSTANT = 0.1
+        CW_NUM_BIN_SEARCH_STEPS = 5
+        CW_NUM_OPTIM_STEPS = 1000
+        CW_DISTANCE_METRIC = 'l2'
+        CW_CONFIDENCE = 0.0
 
-        cwl2_loss = plf.CWPaperLoss(classifier_net, cifar_normer, kappa=0.0)
-        cwl2_obj = aa.CWL2(classifier_net, cifar_normer, cwl2_loss,
-                           CWL2_INITIAL_SCALE_CONSTANT,
-                           num_bin_search_steps=CWL2_NUM_BIN_SEARCH_STEPS,
-                           num_optim_steps=CWL2_NUM_OPTIM_STEPS,
-                           distance_metric_type=CWL2_DISTANCE_METRIC,
-                           confidence=CWL2_CONFIDENCE)
+        cwl2_loss = plf.CWL2Loss(classifier_net, cifar_normer, kappa=0.0)
+        cwl2_obj = aa.CW(classifier_net, cifar_normer, cwl2_loss,
+                           CW_INITIAL_SCALE_CONSTANT,
+                           num_bin_search_steps=CW_NUM_BIN_SEARCH_STEPS,
+                           num_optim_steps=CW_NUM_OPTIM_STEPS,
+                           distance_metric_type=CW_DISTANCE_METRIC,
+                           confidence=CW_CONFIDENCE)
 
 
         cwl2_original_images = ex_minibatch
@@ -225,6 +226,7 @@ def main_attack_script(attack_examples=None,
         cwl2_output = cwl2_obj.attack(ex_minibatch, ex_targets,
                                       verbose=True)
 
+        print cwl2_output['best_dist']
         cwl2_adv_images = cwl2_output['best_adv_images']
 
 
@@ -239,6 +241,60 @@ def main_attack_script(attack_examples=None,
             img_utils.display_adversarial_2row(classifier_net, cifar_normer,
                                                cwl2_original_images,
                                                cwl2_adv_images, 4)
+
+
+    ##########################################################################
+    #   CW LINF ATTACK                                                       #
+    ##########################################################################
+
+
+    if 'CWLInf' in attack_examples:
+
+        # Example Carlini Wagner L2 attack on a single minibatch
+        # steps:
+        #   0) initialize hyperparams
+        #   1) setup loss object
+        #   2) build attack object
+        #   3) setup examples to attack
+        #   4) perform attack
+        #   5) evaluate attack
+
+        CW_INITIAL_SCALE_CONSTANT = 0.1
+        CW_NUM_BIN_SEARCH_STEPS = 5
+        CW_NUM_OPTIM_STEPS = 1000
+        CW_DISTANCE_METRIC = 'linf'
+        CW_CONFIDENCE = 0.0
+
+        cwlinf_loss = plf.CWLInfLoss(classifier_net, cifar_normer, kappa=0.0)
+        cwlinf_obj = aa.CW(classifier_net, cifar_normer, cwlinf_loss,
+                           CW_INITIAL_SCALE_CONSTANT,
+                           num_bin_search_steps=CW_NUM_BIN_SEARCH_STEPS,
+                           num_optim_steps=CW_NUM_OPTIM_STEPS,
+                           distance_metric_type=CW_DISTANCE_METRIC,
+                           confidence=CW_CONFIDENCE)
+
+
+        cwlinf_original_images = ex_minibatch
+        cwlinf_original_labels = ex_targets
+
+        cwlinf_output = cwlinf_obj.attack(ex_minibatch, ex_targets,
+                                      verbose=True)
+
+        print cwlinf_output['best_dist'] * 255.0
+        cwlinf_adv_images = cwlinf_output['best_adv_images']
+
+
+        cwlinf_accuracy = cwlinf_obj.eval(cwlinf_original_images,
+                                          cwlinf_adv_images,
+                                          cwlinf_original_labels)
+        print "CWLinf ATTACK ACCURACY: "
+        print "\t Original %% correct:    %s" % cwlinf_accuracy[0]
+        print "\t Adversarial %% correct: %s" % cwlinf_accuracy[1]
+
+        if show_images:
+            img_utils.display_adversarial_2row(classifier_net, cifar_normer,
+                                               cwlinf_original_images,
+                                               cwlinf_adv_images, 4)
 
 
 
@@ -368,5 +424,5 @@ def main_evaluation_script():
 
 
 if __name__ == '__main__':
-    main_attack_script(['FGSM'], show_images=True)
+    main_attack_script(['FullRandom'], show_images=True)
 

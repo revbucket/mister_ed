@@ -135,6 +135,15 @@ class AdversarialAttack(object):
 
 ##############################################################################
 #                                                                            #
+#                        Uniform Random Method (URM)                         #
+#                                                                            #
+##############################################################################
+
+# plaecholder
+
+
+##############################################################################
+#                                                                            #
 #                         Fast Gradient Sign Method (FGSM)                   #
 #                                                                            #
 ##############################################################################
@@ -406,7 +415,7 @@ class LInfPGD(AdversarialAttack):
 #                                                                          #
 ############################################################################
 
-class CWL2(AdversarialAttack):
+class CW(AdversarialAttack):
 
     def __init__(self, classifier_net, normalizer, loss_fxn,
                  scale_constant, num_bin_search_steps=5, num_optim_steps=1000,
@@ -430,7 +439,7 @@ class CWL2(AdversarialAttack):
                              l2 distance between [0.0, 1.0] images
         """
 
-        super(CWL2, self).__init__(classifier_net, normalizer, use_gpu=use_gpu)
+        super(CW, self).__init__(classifier_net, normalizer, use_gpu=use_gpu)
         self.loss_fxn = loss_fxn
         self.scale_constant = scale_constant
         self.num_bin_search_steps = num_bin_search_steps
@@ -440,6 +449,10 @@ class CWL2(AdversarialAttack):
         if distance_metric_type == 'l2':
             # x, y should be in [0., 1.0] range
             distance_metric = lambda x, y: torch.norm(x - y, 2)
+        elif distance_metric_type == 'linf':
+            # x, y should be in [0.0, 1.0] range
+            distance_metric = lambda x, y: torch.max(torch.abs(x - y))
+
         elif distance_metric_type == 'lpips':
             # Perceptual distance is a little more involved... not defined here
             # x, y should be in [0., 1.0] range
@@ -574,9 +587,6 @@ class CWL2(AdversarialAttack):
                                                   requires_grad=False))
 
 
-        original_output = self.classifier_net.forward(
-                            self.normalizer.forward(Variable(examples)))
-
         num_examples = examples.shape[0]
         best_results = {'best_dist': torch.ones(num_examples) * MAXFLOAT, # NOT SQUARED
                         'best_adv_images': examples.clone(), # [0,1] CWH TENSOR
@@ -590,7 +600,7 @@ class CWL2(AdversarialAttack):
         # [0,1] images -> [-inf, inf] space through tanh transform
         tanh_examples = self._tanh_transform(examples, forward=True)
 
-        var_intermeds = Variable(tanh_examples, requires_grad=True) # VOLATILE
+        var_intermeds = Variable(tanh_examples, requires_grad=True)
 
 
         targeted = target_labels is not None
@@ -622,11 +632,12 @@ class CWL2(AdversarialAttack):
             optimizer = optim.Adam([var_intermeds], lr=0.0005)
 
             for optim_step in xrange(self.num_optim_steps):
+                print "Optim search: %s, %s" % (optim_step, prev_loss)
                 loss_sum = self._optimize_step(optimizer, var_intermeds,
                                                var_targets, var_scale,
                                                targeted=targeted)
 
-                if loss_sum > prev_loss * 0.9999:
+                if loss_sum + 1e-10 > prev_loss * 0.9999:
                     if verbose:
                         print ("...stopping early on binary_search_step %02d "
                                " after %03d iterations" ) % (bin_search_step,

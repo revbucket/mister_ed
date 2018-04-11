@@ -138,7 +138,12 @@ def load_state_dict_from_filename(filename, model):
     assert len(glob.glob(os.path.join(*[CHECKPOINT_DIR, filename]))) == 1
 
     # LOAD FILENAME
-    model.load_state_dict(torch.load(os.path.join(*[CHECKPOINT_DIR, filename])))
+
+    # If state_dict in keys, use that as the loader
+    right_dict = lambda d: d.get('state_dict', d)
+
+    model.load_state_dict(right_dict(torch.load(
+                                    os.path.join(*[CHECKPOINT_DIR, filename]))))
     return model
 
 

@@ -220,6 +220,35 @@ class ReferenceRegularizer(PartialLoss):
         self.zero_grad()
 
 
+#############################################################################
+#                               SOFT L_INF REGULARIZATION                   #
+#############################################################################
+
+class SoftLInfRegularization(ReferenceRegularizer):
+    '''
+        see page 10 of this paper (https://arxiv.org/pdf/1608.04644.pdf)
+        for discussion on why we want SOFT l inf
+    '''
+    def __init__(self, fix_im, **kwargs):
+        super(SoftLInfRegularization, self).__init__(fix_im)
+
+    def forward(self, examples, *args, **kwargs):
+        # ARGS should have one element, which serves as the tau value
+
+        tau =  8.0 / 255.0  # starts at 1 each time?
+        scale_factor = 0.9
+        l_inf_dist = float(torch.max(torch.abs(examples - self.fix_im)))
+        '''
+        while scale_factor * tau > l_inf_dist:
+            tau *= scale_factor
+
+        assert tau > l_inf_dist
+        '''
+        delta_minus_taus = torch.clamp(torch.abs(examples - self.fix_im) - tau,
+                                       min=0.0)
+
+        return torch.sum(delta_minus_taus)
+
 
 #############################################################################
 #                               L2 REGULARIZATION                           #
