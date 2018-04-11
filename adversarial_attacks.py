@@ -420,7 +420,7 @@ class AltPGD(LInfPGD):
         fro_loss refers to a loss that we want to MINIMIZE (lpips, say)
         """
         super(AltPGD, self).__init__(classifier_net, normalizer,
-                                     use_gpu=use_gpu)
+                                     None, use_gpu=use_gpu)
         self.to_loss_fxn = to_loss_fxn
         self.fro_loss_fxn = fro_loss_fxn
         self.losses = [self.to_loss_fxn, self.fro_loss_fxn]
