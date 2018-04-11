@@ -158,6 +158,63 @@ def sizeof_fmt(num, suffix='B'):
     return "%.1f%s%s" % (num, 'Yi', suffix)
 
 
+def clip_0_1(tensorlike):
+    # Clips tensorlike object into [0., 1.0] range
+    return torch.clamp(tensorlike, 0.0, 1.0)
+
+def random_linf_pertubation(examples_like, l_inf):
+    """ Returns an object of the same type/shape as examples_like that holds
+        a uniformly random pertubation in the l_infinity box of l_inf.
+        NOTE THAT THIS DOES NOT ADD TO examples_like!
+    """
+
+    is_var = isinstance(examples_like, Variable)
+
+    random_tensor = (torch.rand(*examples_like.shape) * l_inf * 2 -
+                     torch.ones(*examples_like.shape) * l_inf)
+
+    random_tensor.type(type(examples_like))
+
+    if is_var:
+        return Variable(random_tensor)
+    else:
+        return random_tensor
+
+
+def batchwise_norm(examples, lp, dim=0):
+    """ Returns the per-example norm of the examples, keeping along the
+        specified dimension.
+        e.g. if examples is NxCxHxW, applying this fxn with dim=0 will return a
+             N-length tensor with the lp norm of each example
+    ARGS:
+        examples : tensor or Variable -  needs more than one dimension
+        lp : string or int - either 'inf' or an int for which lp norm we use
+        dim : int - which dimension to keep
+    RETURNS:
+        1D object of same type as examples, but with shape examples.shape[dim]
+    """
+
+    assert isinstance(lp, int) or lp == 'inf'
+    examples = torch.abs(examples)
+    example_dim = examples.dim()
+    if dim != 0:
+        examples = examples.transpose(dim, 0)
+
+    if lp == 'inf':
+        for reduction in xrange(1, example_dim):
+            examples, _ = examples.max(1)
+        return examples
+
+    else:
+        examples = torch.pow(examples + 1e-10, lp)
+        for reduction in xrange(1, example_dim):
+            examples = examples.sum(1)
+        return torch.pow(examples, 1.0 / lp)
+
+
+
+
+
 ###############################################################################
 #                                                                             #
 #                               CUDA RELATED THINGS                           #

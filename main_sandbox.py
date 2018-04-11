@@ -7,6 +7,7 @@ import torch.nn as nn
 
 import config
 import prebuilt_loss_functions as plf
+import loss_functions as lf
 import utils.pytorch_utils as utils
 import utils.image_utils as img_utils
 import cifar10.cifar_loader as cifar_loader
@@ -297,6 +298,37 @@ def main_attack_script(attack_examples=None,
                                                cwlinf_adv_images, 4)
 
 
+    ##########################################################################
+    #   URM ATTACK                                                           #
+    ##########################################################################
+
+    if 'URM' in attack_examples:
+
+
+        # Example Uniform Random Method
+        # steps:
+        #   0) initialize hyperparams
+        #   1) setup loss object
+        #   2) build attack object
+        #   3) setup examples to attack
+        #   4) perform attack
+        #   5) evaluate attack
+
+        URM_BOUND = 8.0 / 255.0
+        URM_TRIES = 10
+
+        urm_loss = lf.IncorrectIndicator(classifier_net,
+                                         normalizer=cifar_normer)
+
+        urm_attack = aa.URM(classifier_net, cifar_normer, urm_loss)
+
+        urm_original_images = ex_minibatch
+        urm_original_labels = ex_targets
+
+        urm_output = urm_attack.attack(ex_minibatch, ex_targets,
+                                       URM_BOUND, num_tries=URM_TRIES)
+
+        import interact
 
 
 ##############################################################################
@@ -424,5 +456,5 @@ def main_evaluation_script():
 
 
 if __name__ == '__main__':
-    main_attack_script(['FullRandom'], show_images=True)
+    main_attack_script(['URM'], show_images=True)
 

@@ -105,6 +105,49 @@ class PartialLoss(object):
 #                                                                            #
 ##############################################################################
 
+############################################################################
+#                       NAIVE CORRECT INDICATOR LOSS                       #
+############################################################################
+
+class IncorrectIndicator(PartialLoss):
+    def __init__(self, classifier, normalizer=None):
+        super(IncorrectIndicator, self).__init__()
+        self.classifier = classifier
+        self.normalizer = normalizer
+
+    def forward(self, examples, labels, *args, **kwargs):
+        """ Returns either (the number | a boolean vector) of examples that
+            don't match the labels when run through the
+            classifier(normalizer(.)) composition.
+        ARGS:
+            examples: Variable (NxCxHxW) - should be same shape as
+                      ctx.fix_im, is the examples we define loss for.
+                      SHOULD BE IN [0.0, 1.0] RANGE
+            labels: Variable (longTensor of length N) - true classification
+                    output for fix_im/examples
+        KWARGS:
+            return_type: String - either 'int' or 'vector'. If 'int', we return
+                         the number of correctly classified examples,
+                         if 'vector' we return a boolean length-N longtensor
+                         with the indices of
+        RETURNS:
+            scalar loss variable or boolean vector, depending on kwargs
+        """
+        return_type = kwargs.get('return_type', 'int')
+        assert return_type in ['int', 'vector']
+
+        class_out = self.classifier.forward(self.normalizer.forward(examples))
+
+        _, outputs = torch.max(class_out, 1)
+        incorrect_indicator = outputs != labels
+
+        if return_type == 'int':
+            return torch.sum(outputs)
+        else:
+            return incorrect_indicator
+
+
+
 ##############################################################################
 #                                   Standard XEntropy Loss                   #
 ##############################################################################

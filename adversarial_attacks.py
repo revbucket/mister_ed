@@ -7,6 +7,7 @@ import utils.image_utils as img_utils
 import random
 import sys
 import custom_lpips.custom_dist_model as dm
+import loss_functions as lf
 
 MAXFLOAT = 1e20
 
@@ -139,7 +140,159 @@ class AdversarialAttack(object):
 #                                                                            #
 ##############################################################################
 
-# plaecholder
+class URM(AdversarialAttack):
+    def __init__(self, classifier_net, normalizer, loss_fxn, use_gpu=False,
+                 lp_norm='linf'):
+        super(URM, self).__init__(classifier_net, normalizer, use_gpu=use_gpu)
+
+        assert lp_norm in ['l2', 'linf']
+
+        if lp_norm == 'l2':
+            raise NotImplementedError
+
+        self.lp_norm = lp_norm
+
+        assert isinstance(loss_fxn, lf.IncorrectIndicator)
+        self.loss_fxn = loss_fxn
+
+
+    @classmethod
+    def _random_linf_perturbation(cls, examples_like, linf_tensor):
+        """ Returns an object of the same type/shape as examples_like that
+            holds a uniformly random perturbation in the l_infinity box of
+            l_inf_tensor[i].
+
+            NOTE THAT THIS JUST RETURNS THE PERTUBATION AND NOT
+            PERTUBATION + EXAMPLES_LIKE
+        ARGS:
+            examples_like : Tensor or Variable (NxCxHxW) -
+            linf_tensor : LongTensor (N) - per-example l_inf bounds we have,
+        RETURNS:
+            NxCxHxW object with same type/storage_device as examples_like
+        """
+        num_examples = examples_like.shape[0]
+
+
+
+        linf_expanded = linf_tensor.view(num_examples,
+                                         *[1] * (examples_like.dim() - 1))
+
+        is_var = isinstance(examples_like, Variable)
+
+        random_tensor = (torch.rand(*examples_like.shape) * linf_expanded * 2 -
+                         torch.ones(*examples_like.shape) * linf_expanded)
+
+
+        if random_tensor.is_cuda != examples_like.is_cuda:
+            xform = lambda t: t.cuda() if examples_like.is_cuda else t.cpu()
+            random_tensor = xform(random_tensor)
+
+        if is_var:
+            return Variable(random_tensor)
+        else:
+            return random_tensor
+
+
+
+    def attack(self, examples, labels, lp_bound, num_tries=100, verbose=True):
+        """ For a given minibatch of examples, uniformly randomly generates
+            num_tries uniform elements from the lp ball of size lp_bound.
+            The minimum distance incorrectly classified object is kept,
+            otherwise the original is returned
+        ARGS:
+            examples: Nxcxwxh tensor for N examples. NOT NORMALIZED (i.e. all
+                      vals are between 0.0 and 1.0 )
+            labels: single-dimension tensor with labels of examples (in same
+                    order)
+
+            lp_bound: float - how far we're allowed to guess in lp-distance
+            num_tries : how many random perturbations we try per example
+        RETURNS:
+            {'min_dist': ..., 'adv_ex': tensor output}
+        """
+
+        # NOTE: THIS IS SUPER NAIVE AND WE CAN DO UNIFORM RANDOM WAAAAY BETTER
+
+
+        num_examples = examples.shape[0]
+        dim = examples.dim()
+        expand_to_dim = lambda t: t.view(num_examples, *([1] * dim))
+
+        var_examples = Variable(examples) # no grads needed
+        var_labels = Variable(labels)
+
+        if self.lp_norm == 'linf':
+            random_guesser = self._random_linf_perturbation
+            lp_type = 'inf'
+        else:
+            lp_type = int(self.lp_norm[1:])
+            raise NotImplementedError
+
+
+
+        lp_vec = torch.ones(num_examples).type(self._dtype) * lp_bound
+        outputs = {'best_dist': torch.ones(num_examples).type(self._dtype) *\
+                                MAXFLOAT,
+                   'best_adv_images': examples.clone(),
+                   'original_images': examples.clone()}
+
+        ######################################################################
+        #   Loop through each try                                            #
+        ######################################################################
+
+        for try_no in xrange(num_tries):
+            if verbose and try_no % (num_tries / 10) == 0 and try_no > 1:
+                print "Completed %03d random guesses..." % try_no
+
+            # get random perturbation
+            random_guess = var_examples + random_guesser(var_examples,
+                                                         lp_vec)
+
+            loss = self.loss_fxn.forward(random_guess, var_labels,
+                                         return_type='vector')
+            loss = loss.type(self._dtype)
+            converse_loss = 1 - loss
+
+            # get distances per example
+
+
+            batchwise_norms = utils.batchwise_norm(random_guess - var_examples,
+                                                   lp_type, dim=0)
+
+            # Reflect this iteration in outputs and lp_tensor
+
+            # build incorrect index vector
+            # comp_1[i] = batchwise_norm[i] if i is adversarial, MAXFLOAT o.w.
+            comp_1 = (loss * batchwise_norms + converse_loss * (MAXFLOAT)).data
+
+            # figure out which random guesses to keep
+            to_keep = (comp_1 < outputs['best_dist']).type(self._dtype)
+            to_keep = expand_to_dim(to_keep)
+            to_keep_converse = 1 - to_keep
+
+            # compute new best_dists and best_adv_images
+            new_bests = (random_guess.data * to_keep +
+                         outputs['best_adv_images'] * to_keep_converse)
+            new_best_dists = torch.min(comp_1, outputs['best_dist'])
+
+            outputs['best_dist'] = new_best_dists
+            outputs['best_adv_images'] = new_bests
+
+        if verbose:
+            num_successful = len([_ for _ in outputs['best_dist']
+                                  if _ < MAXFLOAT])
+            print "\n Ending attack"
+            print "Successful attacks for %03d/%03d examples in CONTINUOUS" %\
+                   (num_successful, num_examples)
+
+        return outputs
+
+
+
+
+
+
+
 
 
 ##############################################################################

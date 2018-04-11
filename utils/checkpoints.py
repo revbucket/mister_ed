@@ -143,7 +143,7 @@ def load_state_dict_from_filename(filename, model):
     right_dict = lambda d: d.get('state_dict', d)
 
     model.load_state_dict(right_dict(torch.load(
-                                    os.path.join(*[CHECKPOINT_DIR, filename]))))
+                                     os.path.join(*[CHECKPOINT_DIR, filename]))))
     return model
 
 
