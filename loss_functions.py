@@ -142,7 +142,7 @@ class IncorrectIndicator(PartialLoss):
         incorrect_indicator = outputs != labels
 
         if return_type == 'int':
-            return torch.sum(outputs)
+            return torch.sum(incorrect_indicator)
         else:
             return incorrect_indicator
 

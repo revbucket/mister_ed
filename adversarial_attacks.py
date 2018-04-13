@@ -179,8 +179,10 @@ class URM(AdversarialAttack):
 
         is_var = isinstance(examples_like, Variable)
 
-        random_tensor = (torch.rand(*examples_like.shape) * linf_expanded * 2 -
-                         torch.ones(*examples_like.shape) * linf_expanded)
+        random_tensor = torch.sign(torch.rand(*examples_like.shape) - 0.5) * linf_expanded
+
+        # random_tensor = (torch.rand(*examples_like.shape) * linf_expanded * 2 -
+        #                torch.ones(*examples_like.shape) * linf_expanded)
 
 
         if random_tensor.is_cuda != examples_like.is_cuda:
@@ -247,9 +249,11 @@ class URM(AdversarialAttack):
             # get random perturbation
             random_guess = var_examples + random_guesser(var_examples,
                                                          lp_vec)
+            random_guess = utils.clip_0_1(random_guess)
 
             loss = self.loss_fxn.forward(random_guess, var_labels,
                                          return_type='vector')
+
             loss = loss.type(self._dtype)
             converse_loss = 1 - loss
 

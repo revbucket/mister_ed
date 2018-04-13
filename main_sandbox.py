@@ -49,7 +49,7 @@ def main_attack_script(attack_examples=None,
 
     # Collect one minibatch worth of data/targets
     val_loader = cifar_loader.load_cifar_data('val', normalize=False,
-                                              batch_size=128,
+                                              batch_size=16,
                                               use_gpu=use_gpu)
     ex_minibatch, ex_targets = next(iter(val_loader))
 
@@ -315,7 +315,7 @@ def main_attack_script(attack_examples=None,
         #   5) evaluate attack
 
         URM_BOUND = 8.0 / 255.0
-        URM_TRIES = 10
+        URM_TRIES = 100
 
         urm_loss = lf.IncorrectIndicator(classifier_net,
                                          normalizer=cifar_normer)
