@@ -456,5 +456,5 @@ def main_evaluation_script():
 
 
 if __name__ == '__main__':
-    main_attack_script(['URM'], show_images=True)
+    main_attack_script(['FGSM'], show_images=True)
 

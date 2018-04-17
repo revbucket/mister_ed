@@ -778,6 +778,7 @@ class CW(AdversarialAttack):
                                 * 16) # HARDCODED UPPER LIMIT
 
 
+
         for bin_search_step in xrange(self.num_bin_search_steps):
 
             ##############################################################
@@ -789,6 +790,7 @@ class CW(AdversarialAttack):
             optimizer = optim.Adam([var_intermeds], lr=0.0005)
 
             for optim_step in xrange(self.num_optim_steps):
+
                 print "Optim search: %s, %s" % (optim_step, prev_loss)
                 loss_sum = self._optimize_step(optimizer, var_intermeds,
                                                var_targets, var_scale,

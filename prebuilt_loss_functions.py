@@ -146,7 +146,7 @@ class CWLpipsLoss(object):
 
         super(CWPaperLoss, self).__init__({'f6': f6_component,
                                            'lpips_reg': lpips_reg},
-                                          {'f6': 1.0, 'lpips_reg': None})
+                                          {'f6': None, 'lpips_reg': 1.0})
 
 
     def forward(self, examples, labels, regularization_constant=None,

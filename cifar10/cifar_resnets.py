@@ -1,5 +1,5 @@
 '''
-MISTER_ED_NOTE: I blatantlty copied this code from this github repository:
+MISTER_ED_NOTE: I blatantly copied this code from this github repository:
 https://github.com/akamaster/pytorch_resnet_cifar10
 
 Huge kudos to Yerlan Idelbayev.
