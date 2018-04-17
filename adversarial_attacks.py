@@ -9,6 +9,7 @@ import sys
 import custom_lpips.custom_dist_model as dm
 import loss_functions as lf
 import spatial_transformers as st
+import torch.nn as nn
 
 MAXFLOAT = 1e20
 
@@ -923,7 +924,7 @@ class SpatialPGDLp(AdversarialAttack):
         #####################################################################
 
         # iterate and modify the spatial_transformation bound
-        optimizer = optim.Adam(spatial_transformer.parameters(), lr=0.0005)
+        optimizer = optim.Adam(spatial_transformer.parameters(), lr=0.05)
         for iter_no in xrange(num_iter):
             if verbose:
                 print "Optim step: %03d" % iter_no
@@ -938,10 +939,26 @@ class SpatialPGDLp(AdversarialAttack):
             loss_val = self.loss_fxn.forward(xformed_examples, var_labels,
                                              spatial=spatial_transformer)
 
+            """ UGh... do I want to do real optimization, or just sign steps """
+
+
+            # IF REAL OPTIMIZATION:
+            # loss_val *= -1
+            # loss_val.backward()
+            # optimizer.step()
+
+            # IF FGSM variants:
             loss_val.backward()
-            optimizer.step()
+
+
+            spatial_transformer.grid_params =\
+                nn.Parameter((spatial_transformer.grid_params + torch.sign(spatial_transformer.grid_params.grad) / 320.0).data)
+            # END FGSM VARIANT
 
             spatial_transformer.project_params(self.lp, lp_bound)
+            if iter_no % 10 == 0:
+                self.validator(spatial_transformer(var_examples), var_labels,
+                               iter_no)
 
 
         return spatial_transformer(var_examples).data
