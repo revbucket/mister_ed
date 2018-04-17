@@ -866,6 +866,88 @@ class CW(AdversarialAttack):
 
 
 
+##############################################################################
+#                                                                            #
+#                           Spatial Transformation Attacks                   #
+#                                                                            #
+##############################################################################
+
+"""
+This is an experimental section. Here we optimize spatial transformation
+parameters to maximize loss on a per-example basis. Later we can also fold in
+l-infinity perturbations, but for now, let's just use STN modules
+
+The most basic thing to do would be to do a 'PGD/FGSM^k/BIM' type attack across
+a FULLY paramaterized spatial transformation network
+"""
+
+
+class SpatialPGDLp(AdversarialAttack):
+    def __init__(self, classifier_net, normalizer, loss_fxn, lp, use_gpu=False):
+        super(SpatialPGDLp).__init__(classifier_net, normalizer,
+                                     use_gpu=use_gpu)
+        self.loss_fxn = loss_fxn
+
+        assert isinstance(lp, int) or lp == 'inf '
+        self.lp = lp
+
+
+    def attack(self, examples, labels, lp_bound, num_iter, step_size=0.01,
+               verbose=True):
+
+        ######################################################################
+        #   Setups and assertions                                            #
+        ######################################################################
+
+        if self.lp == 'inf':
+            assert 0 < lp_bound < 1.0
+
+        self.classifier_net.eval()
+
+        if not verbose:
+            self.validator = lambda ex, label, iter_no: None
+        else:
+            self.validator = self.validation_loop
+
+        spatial_transformer = st.FullSpatial(examples.shape)
+
+        var_examples = Variable(examples, requires_grad=True)
+        var_labels = Variable(labels, requires_grad=False)
+
+
+        self.loss_fxn.setup_attack_batch(Variable(examples,
+                                                  requires_grad=False))
+
+        #####################################################################
+        #   Build adversarial examples                                      #
+        #####################################################################
+
+        # iterate and modify the spatial_transformation bound
+        optimizer = optim.Adam(spatial_transformer.params(), lr=0.0005)
+        for iter_no in xrange(num_iter):
+            if verbose:
+                print "Optim step: %03d" % iter_no
+
+            spatial_transformer.zero_grad()
+
+            xformed_examples = spatial_transformer(var_examples)
+            normed_xformed = self.normalizer.forward(xformed_examples)
+            normed_xformed_out = self.classifier_net(normed_xformed)
+
+
+            loss_val = loss_fxn.forward(normed_xformed_out, var_labels,
+                                        spatial=spatial_transformer)
+
+            loss_val.backward()
+            optimizer.step()
+
+            spatial_transformer.project_params(self.lp, lp_bound)
+
+
+        return spatial_transformer(var_examples).data
+
+
+
 
 
 

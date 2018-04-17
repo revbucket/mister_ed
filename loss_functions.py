@@ -2,7 +2,10 @@ import custom_lpips.custom_dist_model as dm
 import torch.nn as nn
 import torch
 from numbers import Number
+import utils.pytorch_utils as utils
 import utils.image_utils as img_utils
+import spatial_transformers as st
+from torch.autograd import Variable
 
 """ Loss function building blocks """
 
@@ -42,12 +45,12 @@ class RegularizedLoss(object):
 
             assert (isinstance(scalar, float) or # number
                     scalar.numel() == 1 or # tf wrapping of a number
-                    scalar.shape == loss_val.shape) # same as the 
+                    scalar.shape == loss_val.shape) # same as the
 
             addendum = loss_val * scalar
             if addendum.numel() > 1:
                 addendum = torch.sum(addendum)
-                
+
             if output is None:
                 output = addendum
             else:
@@ -331,6 +334,49 @@ class LpipsRegularization(ReferenceRegularizer):
                                                       self.fix_im)
 
         return perceptual_loss.squeeze()
+
+
+
+##############################################################################
+#                                                                            #
+#                           SPATIAL LOSS FUNCTIONS                           #
+#                                                                            #
+##############################################################################
+
+class FullSpatialLpLoss(PartialLoss):
+    """ Spatial loss using lp norms on the spatial transformation parameters
+    This is defined as the Lp difference between the identity map and the
+    provided spatial transformation parameters
+    """
+
+    def __init__(self, **kwargs):
+        super(FullSpatialLpLoss, self).__init__()
+
+        lp = kwargs.get('lp', 2)
+        assert lp in [1, 2, 'inf']
+        self.lp = lp
+
+    def forward(self, examples, *args, **kwargs):
+        """ Computes lp loss between identity map and spatial transformation.
+            There better be a kwarg with key 'spatial' which is as FullSpatial
+            object describing how the examples were generated from the originals
+        """
+        st_obj = kwargs['spatial']
+        assert isinstance(st_obj, st.FullSpatial)
+
+
+        # First create the identity map and make same type as examples
+        identity_map = Variable(st_obj.identity_params(examples.shape))
+        if examples.is_cuda:
+            identity_map.cuda()
+
+        # Then take diffs and take lp norms
+        diffs = st_obj.grid_params - identity_map
+        lp_norm = utils.batchwise_norm(diffs, self.lp, dim=0)
+        return lp_norm # return Nx1 variable, will sum in parent class
+
+
+
 
 
 
