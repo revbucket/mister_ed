@@ -598,7 +598,8 @@ class CW(AdversarialAttack):
         self.num_bin_search_steps = num_bin_search_steps
         self.num_optim_steps = num_optim_steps
         self.confidence = confidence
-
+        self.use_gpu = use_gpu
+        
         if distance_metric_type == 'l2':
             # x, y should be in [0., 1.0] range
             distance_metric = lambda x, y: torch.norm(x - y, 2)
@@ -609,16 +610,15 @@ class CW(AdversarialAttack):
         elif distance_metric_type == 'lpips':
             # Perceptual distance is a little more involved... not defined here
             # x, y should be in [0., 1.0] range
-            dist_model = dm.DistModel()
-            dist_model.initialize(model='net-lin', net='alex', use_gpu=use_gpu)
+            dist_model = dm.DistModel(net='alex', use_gpu=self.use_gpu)
             def distance_metric(x, y, dist_model=dist_model):
                 xform = lambda im: im * 2.0 - 1.0
-                dist = dist_model.forward(xform(x.unsqueeze(0)),
-                                          xform(y.unsqueeze(0)))
+                dist = dist_model.forward_var(Variable(xform(x.unsqueeze(0))),
+                                              Variable(xform(y.unsqueeze(0))))
                 return float(dist)
         self.distance_metric = distance_metric
 
-        self.use_gpu = use_gpu
+
 
 
 
@@ -736,6 +736,7 @@ class CW(AdversarialAttack):
 
 
         self.classifier_net.eval() # ALWAYS EVAL FOR BUILDING ADV EXAMPLES
+        
         self.loss_fxn.setup_attack_batch(Variable(examples,
                                                   requires_grad=False))
 
@@ -766,14 +767,13 @@ class CW(AdversarialAttack):
         #   Binary search over possible scale constants                    #
         ####################################################################
         var_scale_lo = Variable(torch.ones(num_examples).type(self._dtype) *
-                       self.scale_constant)
+                       self.scale_constant).squeeze()
 
         var_scale = Variable(torch.ones(num_examples, 1).type(self._dtype) *
-                             self.scale_constant)
+                             self.scale_constant).squeeze()
         var_scale_hi = Variable(torch.ones(num_examples).type(self._dtype)
-                                * 16) # HARDCODED UPPER LIMIT
-
-
+                                * 16).squeeze() # HARDCODED UPPER LIMIT
+        
         for bin_search_step in xrange(self.num_bin_search_steps):
 
             ##############################################################
@@ -785,7 +785,9 @@ class CW(AdversarialAttack):
             optimizer = optim.Adam([var_intermeds], lr=0.0005)
 
             for optim_step in xrange(self.num_optim_steps):
-                print "Optim search: %s, %s" % (optim_step, prev_loss)
+
+                if verbose and optim_step > 0 and optim_step % 25 == 0:
+                    print "Optim search: %s, %s" % (optim_step, prev_loss)
                 loss_sum = self._optimize_step(optimizer, var_intermeds,
                                                var_targets, var_scale,
                                                targeted=targeted)

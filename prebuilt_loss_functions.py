@@ -71,8 +71,8 @@ class CWL2Loss(lf.RegularizedLoss):
         if isinstance(self.scalars['f6'], float):
             self.scalars['f6'] = (torch.ones(examples.shape[0], 1) *
                                   self.scalars['f6]'])
-
-        assert self.scalars['f6'].shape == (examples.shape[0], 1)
+            
+        assert self.scalars['f6'].shape == torch.Size([examples.size(0)])
 
 
         return super(CWL2Loss, self).forward(examples, labels,
@@ -128,34 +128,34 @@ class CWLInfLoss(lf.RegularizedLoss):
 ##############################################################################
 
 
-class CWLpipsLoss(object):
+class CWLpipsLoss(lf.RegularizedLoss):
     """
     Carlini Wagner Loss with F6 loss as outlined in their paper
     Computes loss to be minimized:
             LPIPS_DIST(input, original) + scale_constant * f6(examples, labels)
     """
 
-    def __init__(self, classifier, normalizer, kappa=0.0):
+    def __init__(self, classifier, normalizer, kappa=0.0, use_gpu=False):
 
         # build F6 component
         f6_component = lf.CWLossF6(classifier, normalizer=normalizer,
                                    kappa=kappa)
 
         # build L2 regularization component
-        lpips_reg = lf.LpipsRegularization(None)
+        lpips_reg = lf.LpipsRegularization(None, use_gpu=use_gpu)
 
-        super(CWPaperLoss, self).__init__({'f6': f6_component,
+        super(CWLpipsLoss, self).__init__({'f6': f6_component,
                                            'lpips_reg': lpips_reg},
                                           {'f6': 1.0, 'lpips_reg': None})
 
 
-    def forward(self, examples, labels, regularization_constant=None,
+    def forward(self, examples, labels, scale_constant=None,
                 targeted=False):
-        if regularization_constant is not None:
-            self.scalars['lpips_reg'] = regularization_constant
+        if scale_constant is not None:
+            self.scalars['lpips_reg'] = scale_constant
 
         assert self.scalars['lpips_reg'] is not None
 
-        return super(CWPaperLoss, self).forward(examples, labels,
+        return super(CWLpipsLoss, self).forward(examples, labels,
                                                 targeted=targeted)
 

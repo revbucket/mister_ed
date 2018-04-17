@@ -39,14 +39,19 @@ class RegularizedLoss(object):
             loss_val = loss.forward(examples, labels, *args, **kwargs)
 
             # assert scalar is either a...
+
             assert (isinstance(scalar, float) or # number
                     scalar.numel() == 1 or # tf wrapping of a number
-                    scalar.shape == loss_val.shape) # same as the shape of loss
+                    scalar.shape == loss_val.shape) # same as the 
 
+            addendum = loss_val * scalar
+            if addendum.numel() > 1:
+                addendum = torch.sum(addendum)
+                
             if output is None:
-                output = loss_val * scalar
+                output = addendum
             else:
-                output = output + loss_val * scalar
+                output = output + addendum
 
         return output
 
@@ -215,7 +220,7 @@ class CWLossF6(PartialLoss):
             # in NONtargeted case, want to make NONtarget most likely
             f6 = torch.clamp(target_logits - max_other, min=-1 * self.kappa)
 
-        return f6
+        return f6.squeeze()
 
 
 
@@ -305,7 +310,7 @@ class L2Regularization(ReferenceRegularizer):
     def forward(self, examples, *args, **kwargs):
         l2_dist = img_utils.nchw_l2(examples, self.fix_im,
                                     squared=True).view(-1, 1)
-        return torch.sum(l2_dist)
+        return l2_dist.squeeze()
 
 #############################################################################
 #                         LPIPS PERCEPTUAL REGULARIZATION                   #
@@ -324,7 +329,8 @@ class LpipsRegularization(ReferenceRegularizer):
         xform = lambda im: im * 2.0 - 1.0
         perceptual_loss = self.dist_model.forward_var(examples,
                                                       self.fix_im)
-        return torch.sum(perceptual_loss)
+
+        return perceptual_loss.squeeze()
 
 
 

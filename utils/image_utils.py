@@ -124,6 +124,7 @@ def display_adversarial_2row(classifier_net, normalizer, original_images,
     if margin_width > 0:
         margin = torch.zeros(3, margin_width, top_row.shape[-1])
         margin[0] = 1.0 # make it red
+        margin = margin.type(type(top_row))
         stack = [top_row, margin, bottom_row]
     else:
         stack = [top_row, bottom_row]

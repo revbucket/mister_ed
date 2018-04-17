@@ -108,6 +108,7 @@ class AdversarialEvaluation(object):
             # Loop through each attack in the ensemble
             for attack_name, attack_params in attack_ensemble.iteritems():
                 print "\t (mb: %s) evaluating %s..." % (i, attack_name)
+
                 attack_out_tuple = attack_params.attack(var_inputs.data,
                                                         var_labels.data)
                 attack_examples = Variable(attack_out_tuple[0])
