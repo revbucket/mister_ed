@@ -320,7 +320,8 @@ def main_attack_script(attack_examples=None,
         urm_loss = lf.IncorrectIndicator(classifier_net,
                                          normalizer=cifar_normer)
 
-        urm_attack = aa.URM(classifier_net, cifar_normer, urm_loss)
+        urm_attack = aa.URM(classifier_net, cifar_normer, urm_loss,
+                            use_gpu=use_gpu)
 
         urm_original_images = ex_minibatch
         urm_original_labels = ex_targets
@@ -456,5 +457,7 @@ def main_evaluation_script():
 
 
 if __name__ == '__main__':
+
     main_attack_script(['FGSM'], show_images=True)
+
 

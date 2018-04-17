@@ -51,10 +51,10 @@ class AdversarialAttackParameters(object):
                                        attacks.LInfPGD)):
             self.output_filter = lambda d: d # also selects output
 
-        elif isinstance(adv_attack_obj, attacks.CWL2):
+        elif isinstance(adv_attack_obj, attacks.CW):
             def output_filter(output_dict, params=self.attack_specific_params):
                 cutoff = (params or {}).get('cutoff', None)
-                return attacks.CWL2.filter_outputs(output_dict,
+                return attacks.CW.filter_outputs(output_dict,
                                                    cutoff_metric=cutoff)
             self.output_filter = output_filter
 
