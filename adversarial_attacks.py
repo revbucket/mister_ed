@@ -8,6 +8,7 @@ import random
 import sys
 import custom_lpips.custom_dist_model as dm
 import loss_functions as lf
+import spatial_transformers as st
 
 MAXFLOAT = 1e20
 
@@ -884,11 +885,10 @@ a FULLY paramaterized spatial transformation network
 
 class SpatialPGDLp(AdversarialAttack):
     def __init__(self, classifier_net, normalizer, loss_fxn, lp, use_gpu=False):
-        super(SpatialPGDLp).__init__(classifier_net, normalizer,
+        super(SpatialPGDLp, self).__init__(classifier_net, normalizer,
                                      use_gpu=use_gpu)
         self.loss_fxn = loss_fxn
-
-        assert isinstance(lp, int) or lp == 'inf '
+        assert (isinstance(lp, int) or lp == 'inf')
         self.lp = lp
 
 
@@ -923,7 +923,7 @@ class SpatialPGDLp(AdversarialAttack):
         #####################################################################
 
         # iterate and modify the spatial_transformation bound
-        optimizer = optim.Adam(spatial_transformer.params(), lr=0.0005)
+        optimizer = optim.Adam(spatial_transformer.parameters(), lr=0.0005)
         for iter_no in xrange(num_iter):
             if verbose:
                 print "Optim step: %03d" % iter_no
@@ -935,8 +935,8 @@ class SpatialPGDLp(AdversarialAttack):
             normed_xformed_out = self.classifier_net(normed_xformed)
 
 
-            loss_val = loss_fxn.forward(normed_xformed_out, var_labels,
-                                        spatial=spatial_transformer)
+            loss_val = self.loss_fxn.forward(xformed_examples, var_labels,
+                                             spatial=spatial_transformer)
 
             loss_val.backward()
             optimizer.step()

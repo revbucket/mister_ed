@@ -16,7 +16,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 import torchvision
-
+import utils.pytorch_utils as utils
 from torch.autograd import Variable
 import numpy as np
 
@@ -65,7 +65,8 @@ class FullSpatial(nn.Module):
         """ Clips the parameters to be between -1 and 1 as required for
             grid_sample
         """
-        self.grid_params = torch.clamp(self.grid_params, -1, 1)
+        clamp_params = torch.clamp(self.grid_params, -1, 1).data
+        self.grid_params = nn.Parameter(clamp_params)
 
     def project_params(self, lp, lp_bound):
         """ Projects the params to be within lp_bound (according to an lp)
@@ -88,8 +89,9 @@ class FullSpatial(nn.Module):
 
         if lp == 'inf':
             identity_params = self.identity_params(self.img_shape)
-            self.grid_params = utils.clamp_ref(self.grid_params,
+            clamp_params = utils.clamp_ref(self.grid_params.data,
                                                identity_params, lp_bound)
+            self.grid_params = nn.Parameter(clamp_params)
         else:
             raise NotImplementedError("Only L-infinity bounds working for now ")
 
