@@ -893,8 +893,25 @@ class SpatialPGDLp(AdversarialAttack):
         self.lp = lp
 
 
-    def attack(self, examples, labels, lp_bound, num_iter, step_size=0.01,
-               verbose=True):
+    def attack(self, examples, labels, lp_bound, num_iter, step_size=1/320.,
+               signed=True, verbose=True):
+        """ Builds tensors with adversarially attacked examples
+        ARGS:
+            examples : NxCxHxW tensor - original examples
+            labels : N-length tensor - labels for the original examples
+            lp_bound: float - maximum allowable Lp distance the transformation
+                              can attain
+            num_iter : int - number of PGD iterations we do
+            step_size : float - the step size we take for signed perturbations
+            signed : bool - if True, we take an L-infinity step of magnitude
+                            step_size based on the signs of the gradients,
+                            otherwise we do true gradient ascent
+            verbose: bool - if True, we print things
+        RETURNS
+            adversarial_examples : NxCxHxW tensor of adversarially perturbed
+                                   examples
+        """
+
 
         ######################################################################
         #   Setups and assertions                                            #
@@ -924,7 +941,7 @@ class SpatialPGDLp(AdversarialAttack):
         #####################################################################
 
         # iterate and modify the spatial_transformation bound
-        optimizer = optim.Adam(spatial_transformer.parameters(), lr=0.05)
+        optimizer = optim.Adam(spatial_transformer.parameters(), lr=step_size)
         for iter_no in xrange(num_iter):
             if verbose:
                 print "Optim step: %03d" % iter_no
@@ -939,21 +956,19 @@ class SpatialPGDLp(AdversarialAttack):
             loss_val = self.loss_fxn.forward(xformed_examples, var_labels,
                                              spatial=spatial_transformer)
 
-            """ UGh... do I want to do real optimization, or just sign steps """
 
+            # if signed make steps according to signs of grads
+            if signed:
+                loss_val.backward()
+                signed_grads = torch.sign(spatial_transformer.grid_params.grad)
+                new_params = nn.Parameter((spatial_transformer.grid_params +
+                                           signed_grads * step_size).data)
+                spatial_transformer.grid_params = new_params
+            else: # use Adam
+                loss_val = loss_val * -1 # want to maximize loss
+                loss_val.backward()
+                optimizer.step()
 
-            # IF REAL OPTIMIZATION:
-            # loss_val *= -1
-            # loss_val.backward()
-            # optimizer.step()
-
-            # IF FGSM variants:
-            loss_val.backward()
-
-
-            spatial_transformer.grid_params =\
-                nn.Parameter((spatial_transformer.grid_params + torch.sign(spatial_transformer.grid_params.grad) / 320.0).data)
-            # END FGSM VARIANT
 
             spatial_transformer.project_params(self.lp, lp_bound)
             if iter_no % 10 == 0:
