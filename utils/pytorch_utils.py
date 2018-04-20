@@ -162,6 +162,14 @@ def clip_0_1(tensorlike):
     # Clips tensorlike object into [0., 1.0] range
     return torch.clamp(tensorlike, 0.0, 1.0)
 
+def clamp_0_1_delta(x, y):
+    """ Returns the delta that'd have to be added to (x + y) such that
+        (x + y) + delta is in the range [0.0, 1.0]
+    """
+    return torch.clamp(x + y, 0.0, 1.0) - (x + y)
+
+
+
 def random_linf_pertubation(examples_like, l_inf):
     """ Returns an object of the same type/shape as examples_like that holds
         a uniformly random pertubation in the l_infinity box of l_inf.
