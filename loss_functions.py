@@ -6,6 +6,7 @@ import utils.pytorch_utils as utils
 import utils.image_utils as img_utils
 import spatial_transformers as st
 from torch.autograd import Variable
+from functools import partial
 
 """ Loss function building blocks """
 
@@ -374,6 +375,134 @@ class FullSpatialLpLoss(PartialLoss):
         diffs = st_obj.grid_params - identity_map
         lp_norm = utils.batchwise_norm(diffs, self.lp, dim=0)
         return lp_norm # return Nx1 variable, will sum in parent class
+
+
+
+##############################################################################
+#                                                                            #
+#                       Combined Transformer Loss                            #
+#                                                                            #
+##############################################################################
+
+class CombinedTransformerLoss(ReferenceRegularizer):
+    """ General class for distance functions and loss functions of the form
+    min_T ||X - T(Y)|| + c * || T ||
+    where X is the original image, and Y is the 'adversarial' input image.
+    """
+
+
+    def __init__(self, fix_im, transform_class=None,
+                 regularization_constant=1.0,
+                 transformation_loss=partial(utils.summed_lp_norm,lp=2),
+                 transform_norm_kwargs=None):
+        """ Takes in a reference fix im and a class of transformations we need
+            to search over to compute forward.
+        """
+        super(CombinedTransformerLoss, self).__init__(fix_im)
+        self.transform_class = transform_class
+        self.regularization_constant = regularization_constant
+        self.transformation_loss = transformation_loss
+        self.transform_norm_kwargs = transform_norm_kwargs or {}
+        self.transformer = None
+
+
+    def cleanup_attack_batch(self):
+        super(CombinedTransformerLoss, self).cleanup_attack_batch()
+        self.transformer = None
+
+
+    def _inner_loss(self, examples):
+        """ Computes the combined loss for a particular transformation """
+
+        trans_examples = self.transformer.forward(examples)
+        trans_loss = self.transformation_loss(self.fix_im - trans_examples)
+
+        trans_norm = self.transformer.norm(**self.transform_norm_kwargs)
+        return trans_loss + trans_norm * self.regularization_constant
+
+
+    def forward(self, examples, *args, **kwargs):
+        """ Computes the distance between examples and args
+        ARGS:
+            examples : NxCxHxW Variable - 'adversarially' perturbed image from
+                       the self.fix_im
+        KWARGS:
+            optimization stuff here
+        """
+
+        ######################################################################
+        #   Setup transformer + optimizer                                    #
+        ######################################################################
+        self.transformer = self.transform_class(shape=examples.shape)
+
+
+        optim_kwargs = kwargs.get('xform_loss_optim_kwargs', {})
+        optim_type = kwargs.get('xform_loss_optim_type', torch.optim.Adam)
+        num_iter = kwargs.get('xform_loss_num_iter', 20)
+
+        optimizer = optim_type(self.transformer.parameters(), **optim_kwargs)
+
+        #####################################################################
+        #   Iterate and optimize the transformer                            #
+        #####################################################################
+        for iter_no in xrange(num_iter):
+            optimizer.zero_grad()
+            loss = self._inner_loss(examples)
+            loss.backward()
+            optimizer.step()
+
+        return self._inner_loss(examples)
+
+
+
+class RelaxedTransformerLoss(ReferenceRegularizer):
+    """  Relaxed version of transformer loss: assumes that the adversarial
+         examples are of the form Y=S(X) + delta for some S in the
+         transformation class and some small delta perturbation outside the
+         perturbation.
+
+         In this case, we just compute ||delta|| + c||S||
+
+         This saves us from having to do the inner minmization step
+    """
+
+    def __init__(self, fix_im,
+                 regularization_constant=1.0,
+                 transformation_loss=partial(utils.summed_lp_norm,lp=2),
+                 transform_norm_kwargs=None):
+        """ Takes in a reference fix im and a class of transformations we need
+            to search over to compute forward.
+        """
+        super(RelaxedTransformerLoss, self).__init__(fix_im)
+        self.regularization_constant = regularization_constant
+        self.transformation_loss = transformation_loss
+        self.transform_norm_kwargs = transform_norm_kwargs or {}
+
+
+    def forward(self, examples, *args, **kwargs):
+        """ Computes the distance between examples and args
+        ARGS:
+            examples : NxCxHxW Variable - 'adversarially' perturbed image from
+                       the self.fix_im
+        KWARGS:
+            optimization stuff here
+        """
+
+        # Collect transformer norm
+        transformer = kwargs['transformer']
+        assert isinstance(transformer, st.ParameterizedTransformation)
+
+        transformer_norm = self.regularization_constant *\
+                           transformer.norm(**self.transform_norm_kwargs)
+
+        # Collect transformation loss
+        delta = self.transformer.forward(self.fix_im) - examples
+        transformation_loss = self.transformation_loss(delta)
+
+        return transformation_loss + transformer_norm
+
+
+
 
 
 

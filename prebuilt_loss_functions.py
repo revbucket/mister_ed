@@ -1,5 +1,6 @@
 import loss_functions as lf
 import torch
+import spatial_transformers as st
 """ Examples of prebuilt loss functions """
 
 
@@ -71,7 +72,7 @@ class CWL2Loss(lf.RegularizedLoss):
         if isinstance(self.scalars['f6'], float):
             self.scalars['f6'] = (torch.ones(examples.shape[0], 1) *
                                   self.scalars['f6]'])
-            
+
         assert self.scalars['f6'].shape == torch.Size([examples.size(0)])
 
 
@@ -152,10 +153,86 @@ class CWLpipsLoss(lf.RegularizedLoss):
     def forward(self, examples, labels, scale_constant=None,
                 targeted=False):
         if scale_constant is not None:
-            self.scalars['lpips_reg'] = scale_constant
+            self.scalars['f6'] = scale_constant
 
-        assert self.scalars['lpips_reg'] is not None
+        assert self.scalars['f6'] is not None
 
         return super(CWLpipsLoss, self).forward(examples, labels,
                                                 targeted=targeted)
+
+
+#############################################################################
+#                                                                           #
+#                       SPATIAL TRANSFORMATION LOSSES                       #
+#                                                                           #
+#############################################################################
+
+class CWTransformerLoss(lf.RegularizedLoss):
+    """ Loss for spatial transformations
+    Is (min_T ||X - T(adversarial))||_2 + c1 * ||T||) +
+        c2 * f6(adversarial, labels)
+    """
+
+    def __init__(self, classifier, normalizer, transformation_scalar,
+                 kappa=0.0, use_gpu=False):
+        # build f6 component
+        f6_component = lf.CWLossF6(classifier, normalizer, kappa=kappa)
+
+        # build transformation loss
+        transform_reg = lf.CombinedTransformerLoss(None,
+                                                 transform_class=st.FullSpatial,
+                                                 regularization_constant=1.0
+                                                 )
+
+        super(CWTransformerLoss, self).__init__({'f6': f6_component,
+                                                 'transform_reg': transform_reg},
+                                                {'f6': None,
+                                                 'transform_reg': 1.0})
+
+
+    def forward(self, examples, labels, scale_constant=None,
+                targeted=False):
+        if scale_constant is not None:
+            self.scalars['f6'] = scale_constant
+
+        assert self.scalars['f6'] is not None
+
+        return super(CWTransformerLoss, self).forward(examples, labels,
+                                                      targeted=targeted)
+
+class CWRelaxedTransformerLoss(lf.RegularizedLoss):
+    """ Relaxed loss for spatial transformations where we have knowledge of
+        our transformation class and the generated transformer
+    If Y:= adversarial images and X:= original images
+    and Y = S(X) + delta for some S in the transformation class, then this loss
+    is ||delta|| + c1 * ||S|| + c2 * f6(Y, Xlabels)
+    """
+
+    def __init__(self, classifier, normalizer, transformation_scalar,
+                 kappa=0.0, use_gpu=False):
+        # build f6 component
+        f6_component = lf.CWLossF6(classifier, normalizer, kappa=kappa)
+
+        # build transformation loss
+        transform_reg = lf.RelaxedTransformerLoss(None)
+
+        super(CWRelaxedTransformerLoss, self).__init__(
+                                                {'f6': f6_component,
+                                                 'transform_reg': transform_reg},
+                                                {'f6': None,
+                                                 'transform_reg': 1.0})
+
+
+    def forward(self, examples, labels, scale_constant=None,
+                targeted=False):
+        if scale_constant is not None:
+            self.scalars['f6'] = scale_constant
+
+        assert self.scalars['f6'] is not None
+
+        return super(RelaxedTransformerLoss, self).forward(examples, labels,
+                                                           targeted=targeted)
+
+
+
 

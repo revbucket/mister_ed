@@ -212,6 +212,16 @@ def batchwise_norm(examples, lp, dim=0):
         return torch.pow(examples, 1.0 / lp)
 
 
+def summed_lp_norm(examples, lp):
+    """ Returns the sum of the lp norm of each example in examples
+    ARGS:
+        examples : tensor or Variable, with first dimension having size N
+        lp : string or int - either 'inf' or an int for which lp norm we use
+    RETURNS:
+        sum of each of the lp norm of each of the N elements in examples
+    """
+    return torch.sum(batchwise_norm(examples, lp, dim=0))
+
 
 
 

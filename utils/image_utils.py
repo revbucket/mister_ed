@@ -75,7 +75,7 @@ def display_adversarial_2row(classifier_net, normalizer, original_images,
                 -- 'random' means some random selection of images
                 -- 'correct' means unsuccessfully attacked images
         ipython: bool - if True, we use in an ipython notebook so slightly
-                        different way to show images
+                        different way to show Images
         margin_width - int : height in pixels of the red margin separating top
                              and bottom rows. Set to 0 for no margin
     RETURNS:

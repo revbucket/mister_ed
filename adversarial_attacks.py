@@ -927,7 +927,7 @@ class SpatialPGDLp(AdversarialAttack):
         else:
             self.validator = self.validation_loop
 
-        spatial_transformer = st.FullSpatial(examples.shape)
+        spatial_transformer = st.FullSpatial(shape=examples.shape)
 
         var_examples = Variable(examples, requires_grad=True)
         var_labels = Variable(labels, requires_grad=False)
