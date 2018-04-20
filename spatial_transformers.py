@@ -202,21 +202,81 @@ class AffineTransform(ParameterizedTransformation):
         """
 
         assert isinstance(lp, int) or lp == 'inf'
-        # then project back
 
-        if lp == 'inf':
-            identity_params = self.identity_params(self.img_shape)
-            clamp_params = utils.clamp_ref(self.xform_params.data,
-                                               identity_params, lp_bound)
-            self.xform_params = nn.Parameter(clamp_params)
-        else:
-            raise NotImplementedError("Only L-infinity bounds working for now ")
+        diff = self.xform_params.data - self.identity_params(self.img_shape)
+        new_diff = utils.batchwise_lp_project(diff, lp, lp_bound)
+        self.xform_params.data.add_(new_diff - diff)
+
 
     def forward(self, x):
         # usual forward technique with affine grid
         grid = F.affine_grid(self.xform_params, x.shape)
         return F.grid_sample(x, grid)
 
+
+
+class RotationTransform(AffineTransform):
+    """ Rotations only -- only has one parameter, the angle by which we rotate
+    """
+
+    def __init__(self, *args, **kwargs):
+        super(RotationTransform, self).__init__(shape=kwargs['shape'])
+        '''
+        img_shape = kwargs['shape']
+        self.img_shape = img_shape
+        self.xform_params = nn.Parameter(self.identity_params(img_shape))
+        '''
+
+    @classmethod
+    def identity_params(cls, shape):
+        num_examples = shape[0]
+        return torch.zeros(num_examples)
+
+    def make_grid(self, x):        
+        assert isinstance(x, Variable)
+        cos_xform = self.xform_params.cos()
+        sin_xform = self.xform_params.sin() 
+        zeros = Variable(torch.zeros(self.xform_params.shape))
+
+        affine_xform = torch.stack([cos_xform, -sin_xform, zeros, 
+                                    sin_xform, cos_xform,  zeros])
+        affine_xform = affine_xform.transpose(0, 1).contiguous().view(-1, 2, 3)
+
+        return F.affine_grid(affine_xform, x.shape)
+
+    def forward(self, x):
+        return F.grid_sample(x, self.make_grid(x))
+
+
+class TranslationTransform(AffineTransform):
+    """ Rotations only -- only has one parameter, the angle by which we rotate
+    """
+
+    def __init__(self, *args, **kwargs):
+        super(TranslationTransform, self).__init__(shape=kwargs['shape'])
+
+
+    @classmethod
+    def identity_params(cls, shape):
+        num_examples = shape[0]
+        return torch.zeros(num_examples, 2) # x and y translation only 
+
+    def make_grid(self, x):        
+        assert isinstance(x, Variable)
+
+        ones = Variable(torch.ones(self.xform_params.shape[0]))
+        zeros = Variable(torch.zeros(self.xform_params.shape[0]))
+
+        affine_xform = torch.stack([ones, zeros, self.xform_params[:,0], 
+                                    zeros, ones, self.xform_params[:,1]])
+
+        affine_xform = affine_xform.transpose(0, 1).contiguous().view(-1, 2, 3)
+
+        return F.affine_grid(affine_xform, x.shape)
+
+    def forward(self, x):
+        return F.grid_sample(x, self.make_grid(x))
+    
 
 
 

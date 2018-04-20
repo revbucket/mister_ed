@@ -16,7 +16,8 @@ import functools
 def initialized(func):
     @functools.wraps(func)
     def wrapper(self, *args, **kwargs):
-        assert self.initialized
+        assert self.initialized, ("Parameters not initialized yet. "
+                                  "Call .forward(...) first")
         return func(self, *args, **kwargs)
     return wrapper
 
@@ -43,15 +44,30 @@ class AdversarialPerturbation(nn.Module):
                                   adversarial images
     """
 
-    def __init__(self):
+    def __init__(self, perturbation_params):
 
         super(AdversarialPerturbation, self).__init__()
         self.initialized = False
+        self.perturbation_params = perturbation_params
         # Stores parameters of the adversarial perturbation and hyperparams
         # to compute total perturbation norm here
 
-    def __call__(self, reference=None):
-        return self.forward(reference=reference)
+    def __call__(self, x):
+        return self.forward(x)
+
+    def __repr__(self):
+        print type(self.perturbation_params)
+        if isinstance(self.perturbation_params, tuple):
+            output_str = "[Perturbation] %s: %s" % (self.__class__.__name__,
+                                                    self.perturbation_params[1])
+            output_str += '\n['
+            for el in self.perturbation_params[0]:
+                output_str += '\n\t%s,' % el
+            output_str += '\n]'
+            return output_str
+        else:
+            return "[Perturbation] %s: %s"  % (self.__class__.__name__,
+                                               self.perturbation_params)
 
     def setup(self):
         pass
@@ -165,13 +181,17 @@ class ThreatModel(object):
         assert issubclass(perturbation_class, AdversarialPerturbation)
         self.perturbation_class = perturbation_class
         self.param_kwargs = param_kwargs
+        self.other_args = other_args
 
-    def __call__(self, originals):
-        return self.perturbation_obj(originals)
+    def __repr__(self):
+        return "[Threat] %s: %s"  % (str(self.perturbation_class.__name__),
+                                     self.param_kwargs)
 
-    def perturbation_obj(self, originals):
-        return self.perturbation_class(originals, self.param_kwargs,
-                                       *other_args)
+    def __call__(self):
+        return self.perturbation_obj()
+
+    def perturbation_obj(self):
+        return self.perturbation_class(self.param_kwargs, *self.other_args)
 
 
 
@@ -183,7 +203,7 @@ class ThreatModel(object):
 
 class DeltaAddition(AdversarialPerturbation):
 
-    def __init__(self, perturbation_params):
+    def __init__(self, perturbation_params, *other_args):
         """ Maintains a delta that gets addded to the originals to generate
             adversarial images. This is the type of adversarial perturbation
             that the literature extensivey studies
@@ -192,20 +212,22 @@ class DeltaAddition(AdversarialPerturbation):
             perturbation_params: PerturbationParameters object.
                 { lp_style : None, int or 'inf' - if not None is the type of
                             Lp_bound that we apply to this adversarial example
-                lp_constraint : None or float - cannot be None if lp_style is
-                                not None, but if not None should be the lp bound
-                                we allow for adversarial perturbations
+                lp_bound : None or float - cannot be None if lp_style is
+                           not None, but if not None should be the lp bound
+                           we allow for adversarial perturbations
                 custom_norm : None or fxn:(NxCxHxW) -> Scalar Variable. This is
                               not implemented for now
                 }
         """
 
-        super(DeltaAddition, self).__init__()
-        self.delta = nn.Parameter(torch.zeros(originals.shape))
+        super(DeltaAddition, self).__init__(perturbation_params)
         self.lp_style = perturbation_params.lp_style
         self.lp_bound = perturbation_params.lp_bound
         if perturbation_params.custom_norm is not None:
             raise NotImplementedError("Only LP norms allowed for now")
+
+    def setup(self, x):
+        self.delta = nn.Parameter(torch.zeros(x.shape))
         self.initialized = True
 
     @initialized
@@ -216,19 +238,14 @@ class DeltaAddition(AdversarialPerturbation):
 
     @initialized
     def constrain_params(self):
-        new_delta = self.delta.data
-
-        if self.lp_style == 'inf':
-            new_delta = torch.clamp(new_delta, -self.lp_bound,
-                                                self.lp_bound)
-        else:
-            # ughh..... I'll do this later
-            raise NotImplementedError("Non LInf norms not implemented")
-
+        new_delta = utils.batchwise_lp_project(self.delta.data, self.lp_style,
+                                               self.lp_bound)
         self.delta = nn.Parameter(new_delta)
+
 
     @initialized
     def make_valid_image(self, x):
+        new_delta = self.delta.data
         change_in_delta = utils.clamp_0_1_delta(new_delta,
                                                 utils.safe_tensor(x))
         self.delta.data.add_(change_in_delta)
@@ -240,13 +257,13 @@ class DeltaAddition(AdversarialPerturbation):
         self.delta.data.add_(grad_data)
 
 
-    @initialized
     def forward(self, x):
-
+        if not self.initialized:
+            self.setup(x)
         self.make_valid_image(x) # not sure which one to do first...
-        self.constrain_params(x)
-
+        self.constrain_params()
         return x + self.delta
+
 
 
 ##############################################################################
@@ -257,8 +274,8 @@ class DeltaAddition(AdversarialPerturbation):
 
 class ParameterizedXformAdv(AdversarialPerturbation):
 
-    def __init__(self, perturbation_params):
-        super(ParameterizedXformAdv, self).__init__()
+    def __init__(self, perturbation_params, *other_args):
+        super(ParameterizedXformAdv, self).__init__(perturbation_params)
         assert issubclass(perturbation_params.xform_class,
                           st.ParameterizedTransformation)
 
@@ -266,7 +283,7 @@ class ParameterizedXformAdv(AdversarialPerturbation):
         self.lp_bound = perturbation_params.lp_bound
 
     def setup(self, originals):
-        self.xform = perturbation_params.xform_class(shape=originals.shape)
+        self.xform = self.perturbation_params.xform_class(shape=originals.shape)
         self.initialized = True
 
     @initialized
@@ -274,15 +291,25 @@ class ParameterizedXformAdv(AdversarialPerturbation):
         return self.xform.norm(lp=self.lp_style)
 
     @initialized
-    def constrain_params(self):
+    def constrain_params(self, x=None):
         # Do lp projections
         if isinstance(self.lp_style, int) or self.lp_style == 'inf':
             self.xform.project_params(self.lp_style, self.lp_bound)
 
+    @initialized
+    def add_to_params(self, grad_data):
+        """ Assumes only one parameters object in the Spatial Transform """
+        param_list = list(self.xform.parameters())
+        assert len(param_list) == 1
+        params = param_list[0]
+        params.data.add_(grad_data)
+
+
     def forward(self, x):
-        self.setup(x)
+        if not self.initialized:
+            self.setup(x)
         self.constrain_params()
-        return self.xform.forward(reference)
+        return self.xform.forward(x)
 
 
 
@@ -299,35 +326,40 @@ class SequentialPerturbation(AdversarialPerturbation):
     """
 
     def __init__(self, perturbation_sequence,
-                 global_parameters=PerturbationParameters()):
+                 global_parameters=PerturbationParameters(pad=10)):
         """ Initializes a sequence of adversarial perturbation layers
         ARGS:
             originals : NxCxHxW tensor - original images we create adversarial
                         perturbations for
-            perturbation_sequence : (Class, PerturbationParameters)[]  -
+            perturbation_sequence : ThreatModel[]  -
                 list of ThreatModel objects
             total_parameters : PerturbationParameters - global parameters to
                                use. These contain things like how to norm this
                                sequence, how to constrain this sequence, etc
          """
-        super(SequentialPerturbation, self).__init__()
+        super(SequentialPerturbation, self).__init__((perturbation_sequence,
+                                                      global_parameters))
 
         self.pipeline = []
         for layer_no, threat_model in enumerate(perturbation_sequence):
             assert isinstance(threat_model, ThreatModel)
-            layer = threat_model(originals)
+            layer = threat_model()
 
             self.pipeline.append(layer)
             self.add_module('layer_%02d' % layer_no, layer)
 
-        self.originals = originals
-        self.original_var = Variable(originals)
 
         # norm: pipeline -> Scalar Variable
         self.norm = global_parameters.norm
 
+        # padding with black is useful to not throw information away during
+        # sequential steps
+        self.pad = nn.ConstantPad2d(global_parameters.pad or 0, 0)
+        self.unpad = nn.ConstantPad2d(-1 * (global_parameters.pad or 0), 0)
+
 
     def setup(self, x):
+        x = self.pad(x)
         for layer in self.pipeline:
             layer.setup(x)
         self.initialized = True
@@ -358,26 +390,27 @@ class SequentialPerturbation(AdversarialPerturbation):
 
 
     @initialized
-    def constrain_params(self, x=None):
+    def constrain_params(self):
         # Need to do some sort of crazy projection operator for general things
         # For now, let's just constrain each thing in sequence
 
         for layer in self.pipeline:
-            layer.constrain_params(x=x)
-            if x is not None:
-                x = layer(x)
-
+            layer.constrain_params()
 
 
     def forward(self, x):
-        self.setup(x)
-        self.constrain_params(x)
+        original_hw = x.shape[-2:]
+        if not self.initialized:
+            self.setup(x)
+
+        self.constrain_params()
         self.make_valid_image(x)
 
+        x = self.pad(x)
         for layer in self.pipeline:
-            x = layer(x)
 
-        return x
+            x = layer(x)
+        return self.unpad(x)
 
 
 

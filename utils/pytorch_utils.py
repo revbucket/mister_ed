@@ -220,6 +220,34 @@ def batchwise_norm(examples, lp, dim=0):
         return torch.pow(examples, 1.0 / lp)
 
 
+def batchwise_lp_project(x, lp, lp_bound, dim=0):
+    """ Projects x (a N-by-(...) TENSOR) to be a N-by-(...) TENSOR into the
+        provided lp ball
+    ARGS:
+        x : Tensor (N-by-(...)) - arbitrary style
+        lp : 'inf' or int - which style of lp we use
+        lp_bound : float - size of lp ball we project into
+        dim : int - if not 0 is the dimension we keep and project onto
+    RETURNS:
+        None
+    """
+    assert isinstance(lp, int) or lp == 'inf'
+
+    if lp == 'inf':
+        lp = float('inf')
+
+    needs_squeeze = False
+    if len(x.shape) == 1:
+        x = x.unsqueeze(1)
+        needs_squeeze = True
+
+    output = torch.renorm(x, lp, dim, lp_bound)
+
+    if needs_squeeze:
+        return output.squeeze()
+    return output
+
+
 def summed_lp_norm(examples, lp):
     """ Returns the sum of the lp norm of each example in examples
     ARGS:
