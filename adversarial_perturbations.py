@@ -135,11 +135,32 @@ class AdversarialPerturbation(nn.Module):
         raise NotImplementedError("Need to call subclass method here")
 
     @initialized
-    def adversarial_tensors(self, x):
+    def update_params(self, step_fxn):
+        """ This takes in a function step_fxn: Tensor -> Tensor that generates
+            the change to the parameters that we step along. This loops through
+            all parameters and updates signs accordingly.
+            For sequential perturbations, this also multiplies by a scalar if
+            provided
+        ARGS:
+            step_fxn : Tensor -> Tensor - function that maps tensors to tensors.
+                       e.g. for FGSM, we want a function that multiplies signs
+                       by step_size
+        RETURNS:
+            None, but updates the parameters
+        """
+        raise NotImplementedError("Need to call subclass method here")
+
+
+    @initialized
+    def adversarial_tensors(self, x=None):
         """ Little helper method to get the tensors of the adversarial images
             directly
         """
-        return self.forward(x).data
+        assert x is not None or self.originals is not None
+        if x is None:
+            x = self.originals
+
+        return self.forward(utils.safe_var(x)).data
 
     @initialized
     def attach_originals(self, originals):
@@ -147,6 +168,17 @@ class AdversarialPerturbation(nn.Module):
             pass around the (images, perturbation) in a single object
         """
         self.originals = originals
+
+
+    @initialized
+    def random_init(self):
+        """ Modifies the parameters such that they're randomly initialized
+            uniformly across the threat model (this is harder for nonLp threat
+            models...). Takes no args and returns nothing, but modifies the
+            parameters
+        """
+        raise NotImplementedError("Need to call subclass method here")
+
 
 
 
@@ -187,8 +219,15 @@ class ThreatModel(object):
         return "[Threat] %s: %s"  % (str(self.perturbation_class.__name__),
                                      self.param_kwargs)
 
-    def __call__(self):
-        return self.perturbation_obj()
+    def __call__(self, *args):
+        if args == ():
+            return self.perturbation_obj()
+        else:
+            perturbation_obj = self.perturbation_obj()
+            perturbation_obj.setup(*args)
+            return perturbation_obj
+
+
 
     def perturbation_obj(self):
         return self.perturbation_class(self.param_kwargs, *self.other_args)
@@ -225,6 +264,7 @@ class DeltaAddition(AdversarialPerturbation):
         self.lp_bound = perturbation_params.lp_bound
         if perturbation_params.custom_norm is not None:
             raise NotImplementedError("Only LP norms allowed for now")
+        self.scalar_step = perturbation_params.scalar_step or 1.0
 
     def setup(self, x):
         self.delta = nn.Parameter(torch.zeros(x.shape))
@@ -233,7 +273,7 @@ class DeltaAddition(AdversarialPerturbation):
     @initialized
     def perturbation_norm(self):
         assert isinstance(self.lp_style, int) or self.lp_style == 'inf'
-        return utils.summed_lp_norm(self.params, lp=self.lp_style)
+        return utils.summed_lp_norm(self.delta, lp=self.lp_style)
 
 
     @initialized
@@ -242,19 +282,34 @@ class DeltaAddition(AdversarialPerturbation):
                                                self.lp_bound)
         self.delta = nn.Parameter(new_delta)
 
-
     @initialized
     def make_valid_image(self, x):
         new_delta = self.delta.data
-        change_in_delta = utils.clamp_0_1_delta(new_delta,
-                                                utils.safe_tensor(x))
+        try:
+            change_in_delta = utils.clamp_0_1_delta(new_delta,
+                                                    utils.safe_tensor(x))
+        except:
+            print new_delta.shape
+            print x.shape
+            natoeuhsntauhe
         self.delta.data.add_(change_in_delta)
 
+    @initialized
+    def update_params(self, step_fxn):
+        assert self.delta.grad.data is not None
+        self.add_to_params(step_fxn(self.delta.grad.data) * self.scalar_step)
 
     @initialized
     def add_to_params(self, grad_data):
         """ sets params to be self.params + grad_data """
         self.delta.data.add_(grad_data)
+
+
+    @initialized
+    def random_init(self):
+        self.delta = nn.Parameter(utils.random_from_lp_ball(self.delta.data,
+                                                            self.lp_style,
+                                                            self.lp_bound))
 
 
     def forward(self, x):
@@ -281,6 +336,7 @@ class ParameterizedXformAdv(AdversarialPerturbation):
 
         self.lp_style = perturbation_params.lp_style
         self.lp_bound = perturbation_params.lp_bound
+        self.scalar_step = perturbation_params.scalar_step or 1.0
 
     def setup(self, originals):
         self.xform = self.perturbation_params.xform_class(shape=originals.shape)
@@ -297,12 +353,34 @@ class ParameterizedXformAdv(AdversarialPerturbation):
             self.xform.project_params(self.lp_style, self.lp_bound)
 
     @initialized
+    def update_params(self, step_fxn):
+        param_list = list(self.xform.parameters())
+        assert len(param_list) == 1
+        params = param_list[0]
+        assert params.grad.data is not None
+        self.add_to_params(step_fxn(params.grad.data) * self.scalar_step)
+
+
+    @initialized
     def add_to_params(self, grad_data):
         """ Assumes only one parameters object in the Spatial Transform """
         param_list = list(self.xform.parameters())
         assert len(param_list) == 1
         params = param_list[0]
         params.data.add_(grad_data)
+
+    @initialized
+    def random_init(self):
+        param_list = list(self.xform.parameters())
+        assert len(param_list) == 1
+        param = param_list[0]
+        random_perturb = utils.random.random_from_lp_ball(param.data,
+                                                          self.lp_style,
+                                                          self.lp_bound)
+
+        param.data.add_(self.xform.identity_params(self.xform.img_shape) +
+                        random_perturb - self.xform.xform_params.data)
+
 
 
     def forward(self, x):
@@ -384,6 +462,7 @@ class SequentialPerturbation(AdversarialPerturbation):
 
     @initialized
     def make_valid_image(self, x):
+        x = self.pad(x)
         for layer in self.pipeline:
             layer.make_valid_image(x)
             x = layer(x)
@@ -397,8 +476,29 @@ class SequentialPerturbation(AdversarialPerturbation):
         for layer in self.pipeline:
             layer.constrain_params()
 
+    @initialized
+    def update_params(self, step_fxn):
+        for layer in self.pipeline:
+            layer.update_params(step_fxn)
 
-    def forward(self, x):
+
+    def forward(self, x, layer_slice=None):
+        """ Layer slice here is either an int or a tuple
+        If int, we run forward only the first layer_slice layers
+        If tuple, we start at the
+
+        """
+
+        # Blocks to handle only particular layer slices (debugging)
+        if layer_slice is None:
+            pipeline_iter = iter(self.pipeline)
+        elif isinstance(layer_slice, int):
+            pipeline_iter = iter(self.pipeline[:layer_slice])
+        elif isinstance(layer_slice, tuple):
+            pipeline_iter = iter(self.pipeline[layer_slice[0]: layer_slice[1]])
+        # End block to handle particular layer slices
+
+        # Handle padding
         original_hw = x.shape[-2:]
         if not self.initialized:
             self.setup(x)
@@ -407,10 +507,20 @@ class SequentialPerturbation(AdversarialPerturbation):
         self.make_valid_image(x)
 
         x = self.pad(x)
-        for layer in self.pipeline:
-
+        for layer in pipeline_iter:
             x = layer(x)
         return self.unpad(x)
+
+
+    @initialized
+    def random_init(self):
+        for layer in self.pipeline:
+            layer.random_init()
+
+    @initialized
+    def attach_originals(self, originals):
+        for layer in self.pipeline:
+            layer.attach_originals(originals)
 
 
 

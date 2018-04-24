@@ -5,6 +5,7 @@ import numpy as np
 import torchvision.transforms as transforms
 import torch.cuda as cuda
 import gc
+import random
 
 from torch.autograd import Variable, Function
 import subprocess
@@ -234,7 +235,7 @@ def batchwise_lp_project(x, lp, lp_bound, dim=0):
     assert isinstance(lp, int) or lp == 'inf'
 
     if lp == 'inf':
-        lp = float('inf')
+        return torch.clamp(x, -lp_bound, lp_bound)
 
     needs_squeeze = False
     if len(x.shape) == 1:
@@ -257,6 +258,39 @@ def summed_lp_norm(examples, lp):
         sum of each of the lp norm of each of the N elements in examples
     """
     return torch.sum(batchwise_norm(examples, lp, dim=0))
+
+
+def random_from_lp_ball(tensorlike, lp, lp_bound, dim=0):
+    """ Returns a new object of the same type/shape as tensorlike that is
+        randomly samples from the unit ball.
+
+        NOTE THIS IS NOT A UNIFORM SAMPLING METHOD!
+        (that's hard to implement, https://mathoverflow.net/a/9192/123034)
+
+    ARGS:
+        tensorlike : Tensor - reference object for which we generate
+                     a new object of same shape/memory_location
+        lp : int or 'inf' - which style of lp we use
+        lp_bound : float - size of the L
+        dim : int - which dimension is the 'keep dimension'
+    RETURNS:
+        new tensorlike where each slice across dim is uniform across the
+        lp ball of size lp_bound
+    """
+    assert isinstance(lp, int) or lp == 'inf'
+
+    rand_direction = torch.rand_like(tensorlike)
+    if lp == 'inf':
+        return rand_direction * (2 * lp_bound) - lp_bound
+    else:
+        # first magnify such that each element is above the ball
+        min_norm = torch.min(batchwise_norm(rand_direction, lp, dim=dim))
+        rand_direction = rand_direction / (min_norm + 1e-6)
+        rand_magnitudes = torch.rand_like(tensorlike.shape[dim])
+        rand_magnitudes = rand_magnitudes.unsqueeze(1)
+        rand_magnitudes = rand_magnitudes.expand(*rand_direction.shape)
+
+        return torch.renorm(rand_direction, lp, dim, lp_bound) * rand_magnitudes
 
 
 

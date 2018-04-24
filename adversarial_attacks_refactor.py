@@ -208,26 +208,120 @@ class FGSM(AdversarialAttack):
         self.loss_fxn.setup_attack_batch(var_examples)
 
         # take gradients
-        loss = self.loss_fxn.forward(perturbation(), var_labels)
+        loss = self.loss_fxn.forward(perturbation(var_examples), var_labels)
         torch.autograd.backward(loss)
 
 
-        # add adversarial noise and clamp to 0.0, 1.0 range
-        for param in perturbation.parameters():
-            param.data.add_(step_size * torch.sign(param.grad.data))
+        # add adversarial noise to each parameter
+        update_fxn = lambda grad_data: step_size * torch.sign(grad_data)
+        perturbation.update_params(update_fxn)
 
+
+        if verbose:
+            self.validation_loop(perturbation(var_examples), var_labels,
+                                 iter_no='Post FGSM')
 
         # output tensor with the data
         self.loss_fxn.cleanup_attack_batch()
-
-        if verbose:
-            self.validation_loop(perturbation(), var_labels,
-                                 iter_no='Post FGSM')
-
+        perturbation.attach_originals(examples)
         return perturbation
 
 
+##############################################################################
+#                                                                            #
+#                           PGD/FGSM^k/BIM                                   #
+#                                                                            #
+##############################################################################
+# This goes by a lot of different names in the literature
+# The key idea here is that we take many small steps of FGSM
+# I'll call it PGD though
+
+class PGD(AdversarialAttack):
+
+    def __init__(self, classifier_net, normalizer, threat_model, loss_fxn,
+                 use_gpu=False):
+        super(PGD, self).__init__(classifier_net, normalizer, threat_model,
+                                  use_gpu=use_gpu)
+        self.loss_fxn = loss_fxn
+
+    def attack(self, examples, labels, step_size=1.0/255.0,
+               num_iterations=20, random_init=False, signed=True,
+               verbose=True):
+        """ Builds PGD examples for the given examples with l_inf bound and
+            given step size. Is almost identical to the BIM attack, except
+            we take steps that are proportional to gradient value instead of
+            just their sign
+        ARGS:
+            examples: NxCxHxW tensor - for N examples, is NOT NORMALIZED
+                      (i.e., all values are in between 0.0 and 1.0)
+            labels: N longTensor - single dimension tensor with labels of
+                    examples (in same order as examples)
+            l_inf_bound : float - how much we're allowed to perturb each pixel
+                          (relative to the 0.0, 1.0 range)
+            step_size : float - how much of a step we take each iteration
+            num_iterations: int - how many iterations we take
+            random_init : bool - if True, we randomly pick a point in the
+                               l-inf epsilon ball around each example
+            signed : bool - if True, each step is
+                            adversarial = adversarial + sign(grad)
+                            [this is the form that madry et al use]
+                            if False, each step is
+                            adversarial = adversarial + grad
+        RETURNS:
+            NxCxHxW tensor with adversarial examples
+        """
+
+        ######################################################################
+        #   Setups and assertions                                            #
+        ######################################################################
+
+        self.classifier_net.eval()
+
+        if not verbose:
+            self.validator = lambda ex, label, iter_no: None
+        else:
+            self.validator = self.validation_loop
+
+        perturbation = self.threat_model(examples)
 
 
+        var_examples = Variable(examples, requires_grad=True)
+        var_labels = Variable(labels, requires_grad=False)
+
+        ######################################################################
+        #   Loop through iterations                                          #
+        ######################################################################
+
+        self.loss_fxn.setup_attack_batch(var_examples)
+        self.validator(var_examples, var_labels, iter_no="START")
+
+        # random initialization if necessary
+        if random_init:
+            perturbation.random_init()
+            self.validator(perturbation(var_examples), var_labels,
+                           iter_no="RANDOM")
+
+        # Build optimizer techniques for both signed and unsigned methods
+        optimizer = optim.Adam(perturbation.parameters(), lr=0.0005)
+        update_fxn = lambda grad_data: step_size * torch.sign(grad_data)
+
+
+        for iter_no in xrange(num_iterations):
+            perturbation.zero_grad()
+            loss = self.loss_fxn.forward(perturbation(var_examples), var_labels)
+            torch.autograd.backward(loss)
+
+            if signed:
+                perturbation.update_params(update_fxn)
+            else:
+                optimizer.step()
+
+            self.validator(perturbation(var_examples), var_labels,
+                           iter_no=iter_no)
+
+        perturbation.zero_grad()
+        self.loss_fxn.cleanup_attack_batch()
+        perturbation.attach_originals(examples)
+        return perturbation
 
 
