@@ -44,9 +44,10 @@ class AdversarialPerturbation(nn.Module):
                                   adversarial images
     """
 
-    def __init__(self, perturbation_params):
+    def __init__(self, threat_model, perturbation_params):
 
         super(AdversarialPerturbation, self).__init__()
+        self.threat_model = threat_model
         self.initialized = False
         self.perturbation_params = perturbation_params
         # Stores parameters of the adversarial perturbation and hyperparams
@@ -69,8 +70,22 @@ class AdversarialPerturbation(nn.Module):
             return "[Perturbation] %s: %s"  % (self.__class__.__name__,
                                                self.perturbation_params)
 
-    def setup(self):
+    def _merge_setup(self, *args):
+        """ Internal method to be used when initializing a new perturbation
+            from merging only. Should not be called outside this file!!
+        """
         pass
+
+    def setup(self, x):
+        """ This is the standard setup technique and should be used to
+            initialize a perturbation (i.e. sets up parameters and unlocks
+            all other methods)
+        ARGS:
+            x : Variable or Tensor (NxCxHxW) - the images this perturbation is
+                intended for
+        """
+        self.num_examples = x.shape[0]
+
 
     @initialized
     def perturbation_norm(self, x=None):
@@ -163,11 +178,27 @@ class AdversarialPerturbation(nn.Module):
         return self.forward(utils.safe_var(x)).data
 
     @initialized
+    def attach_attr(self, attr_name, attr):
+        """ Special method to set an attribute if it doesn't exist in this
+            object yet. throws error if this attr already exists
+        ARGS:
+            attr_name : string - name of attribute we're attaching
+            attr: object - attribute we're attaching
+        RETURNS:
+            None
+        """
+        if hasattr(self, attr_name):
+            raise Exception("%s already has attribute %s" % (self, attr_name))
+        else:
+            setattr(self, attr_name, attr)
+
+
+    @initialized
     def attach_originals(self, originals):
         """ Little helper method to tack on the original images to self to
             pass around the (images, perturbation) in a single object
         """
-        self.originals = originals
+        self.attach_attr('originals', originals)
 
 
     @initialized
@@ -179,7 +210,30 @@ class AdversarialPerturbation(nn.Module):
         """
         raise NotImplementedError("Need to call subclass method here")
 
+    @initialized
+    def merge_perturbation(self, other, self_mask):
+        """ Special technique to merge this perturbation with another
+            perturbation of the same threat model.
+            This will return a new perturbation object that, for each parameter
+            will return the parameters of self for self_mask, and the
+            perturbation of other for NOT(self_mask)
 
+        ARGS:
+            other: AdversarialPerturbation Object - instance of other
+                   adversarial perturbation that is instantiated with the
+                   same threat model as self
+            self_indices: ByteTensor [N] : bytetensor indicating which
+                          parameters to include from self and which to include
+                          from other
+        """
+
+        # this parent class just does the shared asserts such that this is a
+        # valid thing
+        assert self.__class__ == other.__class__
+        assert self.threat_model == other.threat_model
+        assert self.num_examples == other.num_examples
+        assert self.perturbation_params == other.perturbation_params
+        assert other.initialized
 
 
 class PerturbationParameters(dict):
@@ -230,7 +284,7 @@ class ThreatModel(object):
 
 
     def perturbation_obj(self):
-        return self.perturbation_class(self.param_kwargs, *self.other_args)
+        return self.perturbation_class(self, self.param_kwargs, *self.other_args)
 
 
 
@@ -242,12 +296,12 @@ class ThreatModel(object):
 
 class DeltaAddition(AdversarialPerturbation):
 
-    def __init__(self, perturbation_params, *other_args):
+    def __init__(self, threat_model, perturbation_params, *other_args):
         """ Maintains a delta that gets addded to the originals to generate
             adversarial images. This is the type of adversarial perturbation
             that the literature extensivey studies
         ARGS:
-            originals : Tensor (NxCxHxW) - original images that get perturbed
+            threat_model : ThreatModel object that is used to initialize self
             perturbation_params: PerturbationParameters object.
                 { lp_style : None, int or 'inf' - if not None is the type of
                             Lp_bound that we apply to this adversarial example
@@ -259,14 +313,22 @@ class DeltaAddition(AdversarialPerturbation):
                 }
         """
 
-        super(DeltaAddition, self).__init__(perturbation_params)
+        super(DeltaAddition, self).__init__(threat_model, perturbation_params)
         self.lp_style = perturbation_params.lp_style
         self.lp_bound = perturbation_params.lp_bound
         if perturbation_params.custom_norm is not None:
             raise NotImplementedError("Only LP norms allowed for now")
         self.scalar_step = perturbation_params.scalar_step or 1.0
 
+    def _merge_setup(self, num_examples, delta_data):
+        """ DANGEROUS TO BE CALLED OUTSIDE OF THIS FILE!!!"""
+        self.num_examples = num_examples
+        self.delta = nn.Parameter(delta_data)
+        self.initialized = True
+
+
     def setup(self, x):
+        super(DeltaAddition, self).setup(x)
         self.delta = nn.Parameter(torch.zeros(x.shape))
         self.initialized = True
 
@@ -285,13 +347,8 @@ class DeltaAddition(AdversarialPerturbation):
     @initialized
     def make_valid_image(self, x):
         new_delta = self.delta.data
-        try:
-            change_in_delta = utils.clamp_0_1_delta(new_delta,
-                                                    utils.safe_tensor(x))
-        except:
-            print new_delta.shape
-            print x.shape
-            natoeuhsntauhe
+        change_in_delta = utils.clamp_0_1_delta(new_delta,
+                                                utils.safe_tensor(x))
         self.delta.data.add_(change_in_delta)
 
     @initialized
@@ -311,6 +368,23 @@ class DeltaAddition(AdversarialPerturbation):
                                                             self.lp_style,
                                                             self.lp_bound))
 
+    @initialized
+    def merge_perturbation(self, other, self_mask):
+        super(DeltaAddition, self).merge_perturbation(other, self_mask)
+
+        # initialize a new perturbation
+        new_perturbation = DeltaAddition(self.threat_model,
+                                         self.perturbation_params)
+
+        # make the new parameters
+        new_delta = utils.fold_mask(self.delta.data, other.delta.data,
+                                    self_mask)
+
+        # do the merge setup and return the object
+        new_perturbation._merge_setup(self.num_examples,
+                                      new_delta)
+        return new_perturbation
+
 
     def forward(self, x):
         if not self.initialized:
@@ -318,6 +392,7 @@ class DeltaAddition(AdversarialPerturbation):
         self.make_valid_image(x) # not sure which one to do first...
         self.constrain_params()
         return x + self.delta
+
 
 
 
@@ -329,8 +404,9 @@ class DeltaAddition(AdversarialPerturbation):
 
 class ParameterizedXformAdv(AdversarialPerturbation):
 
-    def __init__(self, perturbation_params, *other_args):
-        super(ParameterizedXformAdv, self).__init__(perturbation_params)
+    def __init__(self, threat_model, perturbation_params, *other_args):
+        super(ParameterizedXformAdv, self).__init__(threat_model,
+                                                    perturbation_params)
         assert issubclass(perturbation_params.xform_class,
                           st.ParameterizedTransformation)
 
@@ -338,7 +414,16 @@ class ParameterizedXformAdv(AdversarialPerturbation):
         self.lp_bound = perturbation_params.lp_bound
         self.scalar_step = perturbation_params.scalar_step or 1.0
 
+
+    def _merge_setup(self, num_examples, new_xform):
+        """ DANGEROUS TO BE CALLED OUTSIDE OF THIS FILE!!!"""
+        self.num_examples = num_examples
+        self.xform = new_xform
+        self.initialized = True
+
+
     def setup(self, originals):
+        super(ParameterizedXformAdv, self).setup(x)
         self.xform = self.perturbation_params.xform_class(shape=originals.shape)
         self.initialized = True
 
@@ -374,13 +459,24 @@ class ParameterizedXformAdv(AdversarialPerturbation):
         param_list = list(self.xform.parameters())
         assert len(param_list) == 1
         param = param_list[0]
-        random_perturb = utils.random.random_from_lp_ball(param.data,
-                                                          self.lp_style,
-                                                          self.lp_bound)
+        random_perturb = utils.random_from_lp_ball(param.data,
+                                                   self.lp_style,
+                                                   self.lp_bound)
 
         param.data.add_(self.xform.identity_params(self.xform.img_shape) +
                         random_perturb - self.xform.xform_params.data)
 
+
+    @initialized
+    def merge_perturbation(self, other, self_mask):
+        super(ParameterizedXformAdv, self).merge_perturbation(other, self_mask)
+        new_perturbation = ParameterizedXformAdv(self.threat_model,
+                                                 self.perturbation_params)
+
+        new_xform = self.xform.merge_xform(other.xform, self_mask)
+        new_perturbation._merge_setup(self.num_examples, new_xform)
+
+        return new_perturbation
 
 
     def forward(self, x):
@@ -403,26 +499,35 @@ class SequentialPerturbation(AdversarialPerturbation):
         be specified here to describe the perturbations.
     """
 
-    def __init__(self, perturbation_sequence,
-                 global_parameters=PerturbationParameters(pad=10)):
+    def __init__(self, threat_model, perturbation_sequence,
+                 global_parameters=PerturbationParameters(pad=10),
+                 preinit_pipeline=None):
         """ Initializes a sequence of adversarial perturbation layers
         ARGS:
             originals : NxCxHxW tensor - original images we create adversarial
                         perturbations for
             perturbation_sequence : ThreatModel[]  -
                 list of ThreatModel objects
-            total_parameters : PerturbationParameters - global parameters to
-                               use. These contain things like how to norm this
-                               sequence, how to constrain this sequence, etc
+            global_parameters : PerturbationParameters - global parameters to
+                                use. These contain things like how to norm this
+                                sequence, how to constrain this sequence, etc
+            preinit_pipelines: list[]
+                if not None i
          """
-        super(SequentialPerturbation, self).__init__((perturbation_sequence,
-                                                      global_parameters))
+        super(SequentialPerturbation, self).__init__(threat_model,
+                                                    (perturbation_sequence,
+                                                     global_parameters))
+
+        if preinit_pipeline is not None:
+            layers = preinit_pipeline
+        else:
+            layers = []
+            for threat_model in perturbation_sequence:
+                assert isinstance(threat_model, ThreatModel)
+                layers.append(threat_model())
 
         self.pipeline = []
-        for layer_no, threat_model in enumerate(perturbation_sequence):
-            assert isinstance(threat_model, ThreatModel)
-            layer = threat_model()
-
+        for layer_no, layer in enumerate(layers):
             self.pipeline.append(layer)
             self.add_module('layer_%02d' % layer_no, layer)
 
@@ -436,7 +541,15 @@ class SequentialPerturbation(AdversarialPerturbation):
         self.unpad = nn.ConstantPad2d(-1 * (global_parameters.pad or 0), 0)
 
 
+
+
+    def _merge_setup(self, num_examples):
+        self.num_examples = num_examples
+        self.initialized = True
+
+
     def setup(self, x):
+        super(SequentialPerturbation, self).setup(x)
         x = self.pad(x)
         for layer in self.pipeline:
             layer.setup(x)
@@ -482,6 +595,29 @@ class SequentialPerturbation(AdversarialPerturbation):
             layer.update_params(step_fxn)
 
 
+    @initialized
+    def merge_perturbation(self, other, self_mask):
+        super(SequentialPerturbation, self).merge_perturbation(other, self_mask)
+
+
+        new_pipeline = []
+        for self_layer, other_layer in zip(self.pipeline, other.pipeline):
+            new_pipeline.append(self_layer.merge_perturbation(other_layer,
+                                                              self_mask))
+
+
+        layer_params, global_params = self.perturbation_params
+
+        new_perturbation = SequentialPerturbation(self.threat_model,
+                                                layer_params,
+                                                global_parameters=global_params,
+                                                preinit_pipeline=new_pipeline)
+        new_perturbation._merge_setup(self.num_examples)
+
+        return new_perturbation
+
+
+
     def forward(self, x, layer_slice=None):
         """ Layer slice here is either an int or a tuple
         If int, we run forward only the first layer_slice layers
@@ -519,6 +655,7 @@ class SequentialPerturbation(AdversarialPerturbation):
 
     @initialized
     def attach_originals(self, originals):
+        self.originals = originals
         for layer in self.pipeline:
             layer.attach_originals(originals)
 

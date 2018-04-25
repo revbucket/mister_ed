@@ -268,7 +268,9 @@ class PGD(AdversarialAttack):
                             if False, each step is
                             adversarial = adversarial + grad
         RETURNS:
-            NxCxHxW tensor with adversarial examples
+            AdversarialPerturbation object with correct parameters.
+            Calling perturbation() gets Variable of output and
+            calling perturbation().data gets tensor of output
         """
 
         ######################################################################
@@ -323,5 +325,320 @@ class PGD(AdversarialAttack):
         self.loss_fxn.cleanup_attack_batch()
         perturbation.attach_originals(examples)
         return perturbation
+
+
+
+
+##############################################################################
+#                                                                            #
+#                            CARLINI WAGNER                                  #
+#                                                                            #
+##############################################################################
+"""
+General class of CW attacks: these aim to solve optim problems of the form
+
+Adv(x) = argmin_{x'} D(x, x')
+    s.t. f(x) != f(x')
+         x' is a valid attack (e.g., meets LP bounds)
+
+Which is typically relaxed to solving
+Adv(x) = argmin_{x'} D(x, x') + lambda * L_adv(x')
+where L_adv(x') is only nonpositive when f(x) != f(x').
+
+Binary search is performed on a per-example basis to find the appropriate
+lambda.
+
+The distance function is backpropagated through in each bin search step, so it
+needs to be differentiable. It does not need to be a true distance metric tho
+"""
+
+
+class CarliniWagner(AdversarialAttack):
+
+    def __init__(self, classifier_net, normalizer, threat_model,
+                 distance_fxn, carlini_loss, use_gpu=False):
+        """ This is a different init than the other style attacks because the
+            loss function is separated into two arguments here
+        ARGS:
+            classifier_net: standard attack arg
+            normalizer: standard attack arg
+            threat_model: standard attack arg
+            distance_fxn: lf.ReferenceRegularizer subclass (CLASS NOT INSTANCE)
+                         - is a loss function
+                          that stores originals so it can be used to create a
+                          RegularizedLoss object with the carlini loss object
+            carlini_loss: lf.PartialLoss subclass (CLASS NOT INSTANCE) - is the
+                          loss term that is
+                          a function on images and labels that only
+                          returns zero when the images are adversarial
+        """
+        super(CarliniWagner, self).__init__(classifier_net, normalizer,
+                                            threat_model, use_gpu=use_gpu)
+
+
+        assert issubclass(distance_fxn, lf.ReferenceRegularizer)
+        assert issubclass(carlini_loss, lf.CWLossF6)
+
+        self.loss_classes = {'distance_fxn': distance_fxn,
+                             'carlini_loss': carlini_loss}
+
+
+
+    def _construct_loss_fxn(self, initial_lambda, confidence):
+        """ Uses the distance_fxn and carlini_loss to create a loss function to
+            be optimized
+        ARGS:
+            initial_lambda : float - which lambda to use initially
+                             in the regularization of the carlini loss
+            confidence : float - how great the difference in the logits must be
+                                 for the carlini_loss to be zero. Overwrites the
+                                 self.carlini_loss.kappa value
+        RETURNS:
+            RegularizedLoss OBJECT to be used as the loss for this optimization
+        """
+        losses = {'distance_fxn': self.loss_classes['distance_fxn'](
+                                                    self.classifier_net,
+                                                    self.normalizer),
+                  'carlini_loss': self.loss_classes['carlini_loss'](
+                                                    self.classifier_net,
+                                                    self.normalizer,
+                                                    kappa=confidence)}
+        scalars = {'distance_fxn': 1.0,
+                   'carlini_loss': initial_lambda}
+        return lf.RegularizedLoss(self.losses, scalars)
+
+
+    def _optimize_step(self, optimizer, perturbation, var_examples,
+                       var_targets, var_scale, loss_fxn, targeted=False):
+        """ Does one step of optimization """
+        assert not targeted
+        optimizer.zero_grad()
+
+        loss = loss_fxn.forward(perturbation(var_examples), var_targets)
+
+        if torch.numel(loss) > 1:
+            loss = loss.sum()
+        loss.backward()
+        optimizer.step()
+
+        # return a loss 'average' to determine if we need to stop early
+        return loss.data[0]
+
+
+    def _batch_compare(self, example_logits, targets, targeted=False):
+    """ Returns a list of indices of valid adversarial examples
+    ARGS:
+        example_logits: Variable/Tensor (Nx#Classes) - output logits for a
+                        batch of images
+        targets: Variable/Tensor (N) - each element is a class index for the
+                 target class for the i^th example.
+        targeted: bool - if True, the 'targets' arg should be the targets
+                         we want to hit. If False, 'targets' arg should be
+                         the targets we do NOT want to hit
+    RETURNS:
+        Variable ByteTensor of length (N) on the same device as
+        example_logits/targets  with 1's for successful adversaral examples,
+        0's for unsuccessful
+    """
+    # check if the max val is the targets
+    target_vals = example_logits.gather(1, targets.view(-1, 1))
+    max_vals, max_idxs = torch.max(example_logits, 1)
+    max_eq_targets = torch.eq(targets, max_idxs)
+
+    # check margins between max and target_vals
+    if targeted:
+        max_2_vals, _ = example_logits.kthvalue(2, dim=1)
+        good_confidence = torch.gt(max_vals - self.confidence, max_2_vals)
+        one_hot_indices = max_eq_targets * good_confidence
+    else:
+        good_confidence = torch.gt(max_vals.view(-1, 1),
+                                   target_vals + self.confidence)
+        one_hot_indices = ((1 - max_eq_targets.data).view(-1, 1) *
+                           good_confidence.data)
+
+    return one_hot_indices
+    # return [idx for idx, el in enumerate(one_hot_indices) if el[0] == 1]
+
+    @classmethod
+    def tweak_lambdas(cls, var_scale_lo, var_scale_hi, var_scale,
+                      successful_mask):
+        """ Modifies the constant scaling that we keep to weight f_adv vs D(.)
+            in our loss function.
+
+                IF the attack was successful
+                THEN hi -> lambda
+                     lambda -> (lambda + lo) /2
+                ELSE
+                     lo -> lambda
+                     lambda -> (lambda + hi) / 2
+        ARGS:
+            var_scale_lo : Variable (N) - variable that holds the running lower
+                           bounds in our binary search
+            var_scale_hi: Variable (N) - variable that holds the running upper
+                          bounds in our binary search
+            var_scale : Variable (N) - variable that holds the lambdas we
+                        actually use
+            successful_mask : Variable (ByteTensor N) - mask that holds the
+                              indices of the successful attacks
+        RETURNS:
+            (var_scale_lo, var_scale_hi, var_scale) but modified according to
+            the rule describe in the spec of this method
+        """
+        downweights = (var_scale_lo + var_scale) / 2.0
+        upweights = (var_scale_hi + var_scale) / 2.0
+        var_scale_hi = utils.fold_mask(var_scale, var_scale_hi,
+                                       successful_mask)
+        var_scale_lo = utils.fold_mask(var_scale_lo, var_scale,
+                                       successful_mask)
+        var_scale = utils.fold_mask(downweights, upweights, successful_mask)
+
+        return (var_scale_lo, var_scale_hi, var_scale)
+
+
+    def attack(self, examples, labels, targets=None, initial_lambda=1.0,
+               num_bin_search_steps=10, num_optim_steps=1000,
+               confidence=0.0, verbose=True):
+        """ Performs Carlini Wagner attack on provided examples to make them
+            not get classified as the labels.
+        ARGS:
+            examples : Tensor (NxCxHxW) - input images to be made adversarial
+            labels : Tensor (N) - correct labels of the examples
+            initial_lambda : float - which lambda to use initially
+                             in the regularization of the carlini loss
+            num_bin_search_steps : int - how many binary search steps we perform
+                                   to optimize the lambda
+            num_optim_steps : int - how many optimizer steps we perform during
+                                    each binary search step (we may stop early)
+            confidence : float - how great the difference in the logits must be
+                                 for the carlini_loss to be zero. Overwrites the
+                                 self.carlini_loss.kappa value
+        RETURNS:
+            AdversarialPerturbation object with correct parameters.
+            Calling perturbation() gets Variable of output and
+            calling perturbation().data gets tensor of output
+            calling perturbation(distances=True) returns a dict like
+                {}
+        """
+
+        ######################################################################
+        #   First perform some setups                                        #
+        ######################################################################
+
+        if targets is not None:
+            raise NotImplementedError("Targeted attacks aren't built yet")
+
+        if self.use_gpu:
+            examples = examples.cuda()
+            labels = labels.cuda()
+
+        self.classifier_net.eval() # ALWAYS EVAL FOR BUILDING ADV EXAMPLES
+
+        var_examples = Variable(examples, requires_grad=False)
+        var_labels = Variable(examples, requires_grad=False)
+
+
+        loss_fxn = self._construct_loss_fxn(initial_lambda, confidence)
+        loss_fxn.setup_attack_batch(var_examples)
+        distance_fxn = loss_fxn.losses['distance_fxn']
+
+        num_examples = examples.shape[0]
+
+        best_results = {'best_dist': Variable(torch.ones(num_examples)\
+                                                   .type(examples.type())) \
+                                                   * MAXFLOAT,
+                        'best_perturbation': None}
+
+
+
+        ######################################################################
+        #   Now start the binary search                                      #
+        ######################################################################
+        var_scale_lo = Variable(torch.ones(num_examples).type(self._dtype)
+                                ).squeeze()
+
+        var_scale = Variable(torch.ones(num_examples, 1).type(self._dtype) *
+                             self.scale_constant).squeeze()
+        var_scale_hi = Variable(torch.ones(num_examples).type(self._dtype)
+                                * 16).squeeze() # HARDCODED UPPER LIMIT
+
+
+        for bin_search_step in xrange(num_bin_search_steps):
+            perturbation = self.threat_model(examples)
+            ##################################################################
+            #   Optimize with a given scale constant                         #
+            ##################################################################
+            if verbose:
+                print "Starting binary_search_step %02d..." % bin_search_step
+
+            prev_loss = MAXFLOAT
+            optimizer = optim.Adam(perturbation.parameters())
+
+            for optim_step in xrange(num_optim_steps):
+
+                if verbose and optim_step > 0 and optim_step % 25 == 0:
+                    print "Optim search: %s, %s" % (optim_step, prev_loss)
+
+                loss_sum = self._optimize_step(optimizer, perturbation,
+                                               var_examples, var_scale,
+                                               loss_fxn)
+                if loss_sum + 1e-10 > prev_loss * 0.9999:
+                    if verbose:
+                        print ("...stopping early on binary_search_step %02d "
+                               " after %03d iterations" ) % (bin_search_step,
+                                                             optim_step)
+                    break
+                prev_loss = loss_sum
+            # End inner optimize loop
+
+            ################################################################
+            #   Update with results from optimization                      #
+            ################################################################
+
+            # We only keep this round's perturbations if two things occur:
+            # 1) the perturbation fools the classifier
+            # 2) the perturbation is closer to original than the best-so-far
+
+
+            bin_search_perts = perturbation(var_examples)
+            bin_search_out = self.classifier_net.foward(bin_search_perts)
+            successful_attack_idxs = set(self._batch_compare(bin_search_out
+                                                             var_targets,
+                                                         targeted=targeted))
+
+
+            batch_dists = distance_fxn.forward(bin_search_perturbations)
+            successful_dist_idxs = batch_dists < best_results['best_dist']
+
+            successful_mask = successful_attack_idxs * successful_dist_idxs
+
+            # And then generate a new 'best distance' and 'best perturbation'
+            best_results['best_dist'] = utils.fold_mask(batch_dists,
+                                                      best_results['best_dist'],
+                                                      successful_mask)
+            best_results['best_perturbation'] =\
+                 perturbation.merge_perturbation(
+                                              best_results['best_perturbation'],
+                                              successful_mask)
+
+            # And then adjust the scale variables (lambdas)
+            new_scales = self.tweak_lambdas(var_scale_lo, var_scale_hi,
+                                            var_scale)
+            var_scale_lo, var_scale_hi, var_scale = new_scales
+
+
+        # End binary search loop
+        if verbose:
+            num_successful = len([_ for _ in best_results['best_dist']
+                                  if _ < MAXFLOAT])
+            print "\n Ending attack"
+            print "Successful attacks for %03d/%03d examples in CONTINUOUS" %\
+                  (num_successful, num_examples)
+
+        self.loss_fxn_cleanup_attack_batch()
+        perturbation.attach_originals(examples)
+        perturbation.attach_attr('distances', best_results['best_dist'])
+
+        return perturbation
+
 
 

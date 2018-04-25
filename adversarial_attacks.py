@@ -656,37 +656,7 @@ class CW(AdversarialAttack):
 
 
 
-    def _batch_compare(self, example_logits, targets, targeted=False):
-        """ Returns a list of indices of valid adversarial examples
-        ARGS:
-            example_logits: Variable/Tensor (Nx#Classes) - output logits for a
-                            batch of images
-            targets: Variable/Tensor (N) - each element is a class index for the
-                     target class for the i^th example.
-            targeted: bool - if True, the 'targets' arg should be the targets
-                             we want to hit. If False, 'targets' arg should be
-                             the targets we do NOT want to hit
-        RETURNS:
-            list of indices into example_logits for which the desired confidence
-            bound/targeting holds
-        """
-        # check if the max val is the targets
-        target_vals = example_logits.gather(1, targets.view(-1, 1))
-        max_vals, max_idxs = torch.max(example_logits, 1)
-        max_eq_targets = torch.eq(targets, max_idxs)
 
-        # check margins between max and target_vals
-        if targeted:
-            max_2_vals, _ = example_logits.kthvalue(2, dim=1)
-            good_confidence = torch.gt(max_vals - self.confidence, max_2_vals)
-            one_hot_indices = max_eq_targets * good_confidence
-        else:
-            good_confidence = torch.gt(max_vals.view(-1, 1),
-                                       target_vals + self.confidence)
-            one_hot_indices = ((1 - max_eq_targets.data).view(-1, 1) *
-                               good_confidence.data)
-
-        return [idx for idx, el in enumerate(one_hot_indices) if el[0] == 1]
 
 
     def _tanh_transform(self, examples, forward=True):

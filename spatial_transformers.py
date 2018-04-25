@@ -47,6 +47,39 @@ class ParameterizedTransformation(nn.Module):
     def identity_params(self, shape):
         raise NotImplementedError("Need to call subclass's identity_params!")
 
+    def merge_xform(self, other, self_mask):
+        """ Takes in an other instance of this same class with the same
+            shape of parameters (NxSHAPE) and a self_mask bytetensor of length
+            N and outputs the merge between self's parameters for the indices
+            of 1s in the self_mask and other's parameters for the indices of 0's
+        ARGS:
+            other: instance of same class as self with params of shape NxSHAPE -
+                   the thing we merge with this one
+            self_mask : ByteTensor (length N) - which indices of parameters we
+                        keep from self, and which we keep from other
+        RETURNS:
+            New instance of this class that's merged between the self and other
+            (same shaped params)
+        """
+
+        # JUST DO ASSERTS IN THE SKELETON CLASS
+        assert self.__class__ == other.__class__
+
+        self_params = self.xform_params.data
+        other_params = other.xform_params.data
+        assert self_params.shape == other_params.shape
+        assert self_params.shape[0] == self_mask.shape[0]
+        assert other_params.shape[0] == self_mask.shape[0]
+
+        new_xform = FullSpatial({'shape': self.img_shape})
+
+        new_params = utils.fold_mask(self.xform_params.data,
+                                     other.xform_params.data, self_mask)
+        new_xform.xform_params = nn.Parameter(new_params)
+
+        return new_xform
+
+
     def forward(self, examples):
         raise NotImplementedError("Need to call subclass's forward!")
 
@@ -109,6 +142,25 @@ class FullSpatial(ParameterizedTransformation):
         """
         clamp_params = torch.clamp(self.xform_params, -1, 1).data
         self.xform_params = nn.Parameter(clamp_params)
+
+
+    def merge_xform(self, other, self_mask):
+        """ Takes in an other instance of this same class with the same
+            shape of parameters (NxSHAPE) and a self_mask bytetensor of length
+            N and outputs the merge between self's parameters for the indices
+            of 1s in the self_mask and other's parameters for the indices of 0's
+        """
+        super(FullSpatial, self).merge_xform(other, self_mask)
+
+        new_xform = FullSpatial({'shape': self.img_shape})
+
+        new_params = utils.fold_mask(self.xform_params.data,
+                                     other.xform_params.data, self_mask)
+        new_xform.xform_params = nn.Parameter(new_params)
+
+        return new_xform
+
+
 
     def project_params(self, lp, lp_bound):
         """ Projects the params to be within lp_bound (according to an lp)
@@ -232,13 +284,13 @@ class RotationTransform(AffineTransform):
         num_examples = shape[0]
         return torch.zeros(num_examples)
 
-    def make_grid(self, x):        
+    def make_grid(self, x):
         assert isinstance(x, Variable)
         cos_xform = self.xform_params.cos()
-        sin_xform = self.xform_params.sin() 
+        sin_xform = self.xform_params.sin()
         zeros = Variable(torch.zeros(self.xform_params.shape))
 
-        affine_xform = torch.stack([cos_xform, -sin_xform, zeros, 
+        affine_xform = torch.stack([cos_xform, -sin_xform, zeros,
                                     sin_xform, cos_xform,  zeros])
         affine_xform = affine_xform.transpose(0, 1).contiguous().view(-1, 2, 3)
 
@@ -259,15 +311,15 @@ class TranslationTransform(AffineTransform):
     @classmethod
     def identity_params(cls, shape):
         num_examples = shape[0]
-        return torch.zeros(num_examples, 2) # x and y translation only 
+        return torch.zeros(num_examples, 2) # x and y translation only
 
-    def make_grid(self, x):        
+    def make_grid(self, x):
         assert isinstance(x, Variable)
 
         ones = Variable(torch.ones(self.xform_params.shape[0]))
         zeros = Variable(torch.zeros(self.xform_params.shape[0]))
 
-        affine_xform = torch.stack([ones, zeros, self.xform_params[:,0], 
+        affine_xform = torch.stack([ones, zeros, self.xform_params[:,0],
                                     zeros, ones, self.xform_params[:,1]])
 
         affine_xform = affine_xform.transpose(0, 1).contiguous().view(-1, 2, 3)
@@ -276,7 +328,8 @@ class TranslationTransform(AffineTransform):
 
     def forward(self, x):
         return F.grid_sample(x, self.make_grid(x))
-    
+
+
 
 
 

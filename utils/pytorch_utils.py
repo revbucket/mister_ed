@@ -279,20 +279,78 @@ def random_from_lp_ball(tensorlike, lp, lp_bound, dim=0):
     """
     assert isinstance(lp, int) or lp == 'inf'
 
-    rand_direction = torch.rand_like(tensorlike)
+
+
+    rand_direction = torch.rand(tensorlike.shape).type(tensorlike.type())
+
     if lp == 'inf':
         return rand_direction * (2 * lp_bound) - lp_bound
     else:
+        rand_direction = rand_direction - 0.5 # allow for sign swapping
         # first magnify such that each element is above the ball
-        min_norm = torch.min(batchwise_norm(rand_direction, lp, dim=dim))
+        min_norm = torch.min(batchwise_norm(rand_direction.abs(), lp, dim=dim))
         rand_direction = rand_direction / (min_norm + 1e-6)
-        rand_magnitudes = torch.rand_like(tensorlike.shape[dim])
+        rand_magnitudes = torch.rand(tensorlike.shape[dim]).type(
+                                                            tensorlike.type())
         rand_magnitudes = rand_magnitudes.unsqueeze(1)
         rand_magnitudes = rand_magnitudes.expand(*rand_direction.shape)
+
+
 
         return torch.renorm(rand_direction, lp, dim, lp_bound) * rand_magnitudes
 
 
+def tanh_transform(tensorlike, forward=True):
+    """ Takes in Tensor or Variable and converts it between [0, 1] range and
+        (-inf, +inf) range by performing an invertible tanh transformation.
+    ARGS:
+        tensorlike : Tensor or Variable (arbitrary shape) - object to be
+                     modified into or out of tanh space
+        forward : bool - if True we convert from [0, 1] space to (-inf, +inf)
+                         space
+                         if False we convert from (-inf, +inf) space to [0, 1]
+                         space
+    RETURNS:
+        object of the same shape/type as tensorlike, but with the appropriate
+        transformation
+    """
+    if forward:
+        assert torch.min(tensorlike) >= 0.0
+        assert torch.max(tensorlike) <= 1.0
+        # first convert to [-1, +1] space
+        temp = (tensorlike * 2 - 1) * (1 - 1e-6)
+        return torch.log((1 + temp) / (1 - temp)) / 2.0
+
+    else:
+        return (torch.tanh(tensorlike) + 1) / 2.0
+
+
+def fold_mask(x, y, mask):
+    """ Creates a new tensor that's the result of masking between x and y
+    ARGS:
+        x : Tensor or Variable (NxSHAPE) - tensor that we're selecting where the
+            masked values are 1
+        y : Tensor or Variable (NxSHAPE) - tensor that we're selecting where the
+            masked values are 0
+        mask: ByteTensor (N) - masked values. Is only one dimensional: we expand
+              it in the creation of this
+    RETURNS:
+        new object of the same shape/type as x and y
+    """
+    assert x.shape == y.shape
+    assert mask.shape == (x.shape[0],)
+
+
+    per_example_shape = x.shape[1:]
+    make_broadcastable = lambda m: m.view(-1, *tuple([1] * (x.dim() - 1)))
+
+    broadcast_mask = make_broadcastable(mask)
+    broadcast_not_mask = make_broadcastable(1 - mask)
+
+    output = torch.zeros_like(x)
+    output.masked_scatter_(broadcast_mask, x)
+    output.masked_scatter_(broadcast_not_mask, y)
+    return output
 
 
 ###############################################################################
