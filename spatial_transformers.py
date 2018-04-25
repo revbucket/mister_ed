@@ -71,7 +71,7 @@ class ParameterizedTransformation(nn.Module):
         assert self_params.shape[0] == self_mask.shape[0]
         assert other_params.shape[0] == self_mask.shape[0]
 
-        new_xform = FullSpatial({'shape': self.img_shape})
+        new_xform = self.__class__(shape=self.img_shape)
 
         new_params = utils.fold_mask(self.xform_params.data,
                                      other.xform_params.data, self_mask)
@@ -298,6 +298,7 @@ class RotationTransform(AffineTransform):
 
     def forward(self, x):
         return F.grid_sample(x, self.make_grid(x))
+
 
 
 class TranslationTransform(AffineTransform):

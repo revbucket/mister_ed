@@ -57,7 +57,6 @@ class AdversarialPerturbation(nn.Module):
         return self.forward(x)
 
     def __repr__(self):
-        print type(self.perturbation_params)
         if isinstance(self.perturbation_params, tuple):
             output_str = "[Perturbation] %s: %s" % (self.__class__.__name__,
                                                     self.perturbation_params[1])
@@ -423,7 +422,7 @@ class ParameterizedXformAdv(AdversarialPerturbation):
 
 
     def setup(self, originals):
-        super(ParameterizedXformAdv, self).setup(x)
+        super(ParameterizedXformAdv, self).setup(originals)
         self.xform = self.perturbation_params.xform_class(shape=originals.shape)
         self.initialized = True
 
