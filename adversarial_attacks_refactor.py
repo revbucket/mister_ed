@@ -304,20 +304,20 @@ class PGD(AdversarialAttack):
                            iter_no="RANDOM")
 
         # Build optimizer techniques for both signed and unsigned methods
-        optimizer = optim.Adam(perturbation.parameters(), lr=0.0005)
-        update_fxn = lambda grad_data: step_size * torch.sign(grad_data)
+        optimizer = optim.Adam(perturbation.parameters(), lr=0.0001)
+        update_fxn = lambda grad_data: -1 * step_size * torch.sign(grad_data)
 
 
         for iter_no in xrange(num_iterations):
             perturbation.zero_grad()
             loss = self.loss_fxn.forward(perturbation(var_examples), var_labels)
+            loss = -1 * loss
             torch.autograd.backward(loss)
-
+            print float(loss)
             if signed:
                 perturbation.update_params(update_fxn)
             else:
                 optimizer.step()
-
             self.validator(perturbation(var_examples), var_labels,
                            iter_no=iter_no)
 
@@ -396,16 +396,14 @@ class CarliniWagner(AdversarialAttack):
         RETURNS:
             RegularizedLoss OBJECT to be used as the loss for this optimization
         """
-        losses = {'distance_fxn': self.loss_classes['distance_fxn'](
-                                                    self.classifier_net,
-                                                    self.normalizer),
+        losses = {'distance_fxn': self.loss_classes['distance_fxn'](None),
                   'carlini_loss': self.loss_classes['carlini_loss'](
                                                     self.classifier_net,
                                                     self.normalizer,
                                                     kappa=confidence)}
         scalars = {'distance_fxn': 1.0,
                    'carlini_loss': initial_lambda}
-        return lf.RegularizedLoss(self.losses, scalars)
+        return lf.RegularizedLoss(losses, scalars)
 
 
     def _optimize_step(self, optimizer, perturbation, var_examples,
@@ -415,23 +413,25 @@ class CarliniWagner(AdversarialAttack):
         optimizer.zero_grad()
 
         loss = loss_fxn.forward(perturbation(var_examples), var_targets)
-
         if torch.numel(loss) > 1:
             loss = loss.sum()
         loss.backward()
-        optimizer.step()
 
+        optimizer.step()
         # return a loss 'average' to determine if we need to stop early
         return loss.data[0]
 
 
-    def _batch_compare(self, example_logits, targets, targeted=False):
+    def _batch_compare(self, example_logits, targets, confidence=0.0,
+                       targeted=False):
         """ Returns a list of indices of valid adversarial examples
         ARGS:
             example_logits: Variable/Tensor (Nx#Classes) - output logits for a
                             batch of images
             targets: Variable/Tensor (N) - each element is a class index for the
                      target class for the i^th example.
+            confidence: float - how much the logits must differ by for an
+                                attack to be considered valid
             targeted: bool - if True, the 'targets' arg should be the targets
                              we want to hit. If False, 'targets' arg should be
                              the targets we do NOT want to hit
@@ -448,15 +448,15 @@ class CarliniWagner(AdversarialAttack):
         # check margins between max and target_vals
         if targeted:
             max_2_vals, _ = example_logits.kthvalue(2, dim=1)
-            good_confidence = torch.gt(max_vals - self.confidence, max_2_vals)
+            good_confidence = torch.gt(max_vals - confidence, max_2_vals)
             one_hot_indices = max_eq_targets * good_confidence
         else:
             good_confidence = torch.gt(max_vals.view(-1, 1),
-                                       target_vals + self.confidence)
+                                       target_vals + confidence)
             one_hot_indices = ((1 - max_eq_targets.data).view(-1, 1) *
                                good_confidence.data)
 
-        return one_hot_indices
+        return one_hot_indices.squeeze()
         # return [idx for idx, el in enumerate(one_hot_indices) if el[0] == 1]
 
     @classmethod
@@ -471,6 +471,8 @@ class CarliniWagner(AdversarialAttack):
                 ELSE
                      lo -> lambda
                      lambda -> (lambda + hi) / 2
+
+
         ARGS:
             var_scale_lo : Variable (N) - variable that holds the running lower
                            bounds in our binary search
@@ -484,15 +486,17 @@ class CarliniWagner(AdversarialAttack):
             (var_scale_lo, var_scale_hi, var_scale) but modified according to
             the rule describe in the spec of this method
         """
-        downweights = (var_scale_lo + var_scale) / 2.0
-        upweights = (var_scale_hi + var_scale) / 2.0
-        var_scale_hi = utils.fold_mask(var_scale, var_scale_hi,
-                                       successful_mask)
-        var_scale_lo = utils.fold_mask(var_scale_lo, var_scale,
-                                       successful_mask)
-        var_scale = utils.fold_mask(downweights, upweights, successful_mask)
+        prev_his = var_scale_hi.data
+        downweights = (var_scale_lo.data + var_scale.data) / 2.0
+        upweights = (var_scale_hi.data + var_scale.data) / 2.0
 
-        return (var_scale_lo, var_scale_hi, var_scale)
+        scale_hi = utils.fold_mask(var_scale.data, var_scale_hi.data,
+                                   successful_mask.data)
+        scale_lo = utils.fold_mask(var_scale_lo.data, var_scale.data,
+                                   successful_mask.data)
+        scale = utils.fold_mask(downweights, upweights,
+                                successful_mask.data)
+        return (Variable(scale_lo), Variable(scale_hi), Variable(scale))
 
 
     def attack(self, examples, labels, targets=None, initial_lambda=1.0,
@@ -534,7 +538,7 @@ class CarliniWagner(AdversarialAttack):
         self.classifier_net.eval() # ALWAYS EVAL FOR BUILDING ADV EXAMPLES
 
         var_examples = Variable(examples, requires_grad=False)
-        var_labels = Variable(examples, requires_grad=False)
+        var_labels = Variable(labels, requires_grad=False)
 
 
         loss_fxn = self._construct_loss_fxn(initial_lambda, confidence)
@@ -543,27 +547,29 @@ class CarliniWagner(AdversarialAttack):
 
         num_examples = examples.shape[0]
 
-        best_results = {'best_dist': Variable(torch.ones(num_examples)\
-                                                   .type(examples.type())) \
+        best_results = {'best_dist': torch.ones(num_examples)\
+                                                 .type(examples.type()) \
                                                    * MAXFLOAT,
-                        'best_perturbation': None}
+                        'best_perturbation': self.threat_model(examples)}
 
 
 
         ######################################################################
         #   Now start the binary search                                      #
         ######################################################################
-        var_scale_lo = Variable(torch.ones(num_examples).type(self._dtype)
-                                ).squeeze()
+        var_scale_lo = Variable(torch.zeros(num_examples)\
+                                .type(self._dtype).squeeze())
+
 
         var_scale = Variable(torch.ones(num_examples, 1).type(self._dtype) *
-                             self.scale_constant).squeeze()
+                             initial_lambda).squeeze()
         var_scale_hi = Variable(torch.ones(num_examples).type(self._dtype)
-                                * 16).squeeze() # HARDCODED UPPER LIMIT
+                                * 128).squeeze() # HARDCODED UPPER LIMIT
 
 
         for bin_search_step in xrange(num_bin_search_steps):
             perturbation = self.threat_model(examples)
+            # print "PERT SUM:", float(torch.sum(torch.abs(perturbation.delta)))
             ##################################################################
             #   Optimize with a given scale constant                         #
             ##################################################################
@@ -571,17 +577,19 @@ class CarliniWagner(AdversarialAttack):
                 print "Starting binary_search_step %02d..." % bin_search_step
 
             prev_loss = MAXFLOAT
-            optimizer = optim.Adam(perturbation.parameters())
+            optimizer = optim.Adam(perturbation.parameters(), lr=0.001)
 
             for optim_step in xrange(num_optim_steps):
 
                 if verbose and optim_step > 0 and optim_step % 25 == 0:
-                    print "Optim search: %s, %s" % (optim_step, prev_loss)
+                    print "Optim search: %s, Loss: %s" % (optim_step, prev_loss)
 
                 loss_sum = self._optimize_step(optimizer, perturbation,
-                                               var_examples, var_scale,
-                                               loss_fxn)
-                if loss_sum + 1e-10 > prev_loss * 0.9999:
+                                               var_examples, var_labels,
+                                               var_scale, loss_fxn)
+
+                new_params = perturbation.delta.data.clone()
+                if loss_sum + 1e-10 > prev_loss * 0.99999 and optim_step >= 100:
                     if verbose:
                         print ("...stopping early on binary_search_step %02d "
                                " after %03d iterations" ) % (bin_search_step,
@@ -600,14 +608,16 @@ class CarliniWagner(AdversarialAttack):
 
 
             bin_search_perts = perturbation(var_examples)
-            bin_search_out = self.classifier_net.foward(bin_search_perts)
-            successful_attack_idxs = set(self._batch_compare(bin_search_out,
-                                                             var_targets,
-                                                         targeted=targeted))
+            bin_search_out = self.classifier_net.forward(bin_search_perts)
+            successful_attack_idxs = self._batch_compare(bin_search_out,
+                                                         var_labels)
 
 
-            batch_dists = distance_fxn.forward(bin_search_perturbations)
+            batch_dists = distance_fxn.forward(bin_search_perts).data
+
             successful_dist_idxs = batch_dists < best_results['best_dist']
+            successful_dist_idxs = successful_dist_idxs
+
 
             successful_mask = successful_attack_idxs * successful_dist_idxs
 
@@ -615,6 +625,7 @@ class CarliniWagner(AdversarialAttack):
             best_results['best_dist'] = utils.fold_mask(batch_dists,
                                                       best_results['best_dist'],
                                                       successful_mask)
+
             best_results['best_perturbation'] =\
                  perturbation.merge_perturbation(
                                               best_results['best_perturbation'],
@@ -622,9 +633,10 @@ class CarliniWagner(AdversarialAttack):
 
             # And then adjust the scale variables (lambdas)
             new_scales = self.tweak_lambdas(var_scale_lo, var_scale_hi,
-                                            var_scale)
-            var_scale_lo, var_scale_hi, var_scale = new_scales
+                                            var_scale,
+                                            Variable(successful_mask))
 
+            var_scale_lo, var_scale_hi, var_scale = new_scales
 
         # End binary search loop
         if verbose:
@@ -634,7 +646,7 @@ class CarliniWagner(AdversarialAttack):
             print "Successful attacks for %03d/%03d examples in CONTINUOUS" %\
                   (num_successful, num_examples)
 
-        self.loss_fxn_cleanup_attack_batch()
+        loss_fxn.cleanup_attack_batch()
         perturbation.attach_originals(examples)
         perturbation.attach_attr('distances', best_results['best_dist'])
 

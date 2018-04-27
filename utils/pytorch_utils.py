@@ -339,17 +339,25 @@ def fold_mask(x, y, mask):
     """
     assert x.shape == y.shape
     assert mask.shape == (x.shape[0],)
+    assert type(x) == type(y)
+
+    is_var = isinstance(x, Variable)
+    if is_var:
+        assert isinstance(mask, Variable)
 
 
     per_example_shape = x.shape[1:]
     make_broadcastable = lambda m: m.view(-1, *tuple([1] * (x.dim() - 1)))
 
     broadcast_mask = make_broadcastable(mask)
-    broadcast_not_mask = make_broadcastable(1 - mask)
+    broadcast_not_mask = make_broadcastable(1 - safe_tensor(mask))
+    if is_var:
+        broadcast_not_mask = Variable(broadcast_not_mask)
 
     output = torch.zeros_like(x)
-    output.masked_scatter_(broadcast_mask, x)
-    output.masked_scatter_(broadcast_not_mask, y)
+    output.add_(x * (broadcast_mask.type(x.type())))
+    output.add_(y * (broadcast_not_mask.type(y.type())))
+
     return output
 
 

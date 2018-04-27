@@ -319,6 +319,7 @@ class DeltaAddition(AdversarialPerturbation):
             raise NotImplementedError("Only LP norms allowed for now")
         self.scalar_step = perturbation_params.scalar_step or 1.0
 
+
     def _merge_setup(self, num_examples, delta_data):
         """ DANGEROUS TO BE CALLED OUTSIDE OF THIS FILE!!!"""
         self.num_examples = num_examples
@@ -341,7 +342,8 @@ class DeltaAddition(AdversarialPerturbation):
     def constrain_params(self):
         new_delta = utils.batchwise_lp_project(self.delta.data, self.lp_style,
                                                self.lp_bound)
-        self.delta = nn.Parameter(new_delta)
+        delta_diff = new_delta - self.delta.data
+        self.delta.data.add_(delta_diff)
 
     @initialized
     def make_valid_image(self, x):
