@@ -1,4 +1,6 @@
 """ Holds the various attacks we can do """
+
+
 import torch
 from torch.autograd import Variable, Function
 from torch import optim

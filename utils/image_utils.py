@@ -33,24 +33,42 @@ def nhwc255_xform(img_np_array):
         return np.transpose(img_np_array, (0, 2, 3, 1)) * 255.0
 
 
-def show_images(img_tensor, normalize=None, ipython=True, num_rows=None):
-    """ quick method to show list of cifar images in a single row
-    ARGS:
-        img_tensor: Nx3x32x32 floatTensor where N is the number of images.
-        num_rows: if not specified, will try to make the output as square as
-                  possible (erring on the side of being wider )
-    RETURNS:
-        None, but interactively shows an image
-    """
-    if normalize is not None:
-        img_tensor = utils.UnnormalizeImg(normalize)(img_tensor)
+def show_images(images, normalize=None, ipython=True,
+                margin_height=2, margin_color='red'):
+    """ Shows pytorch tensors/variables as images """
 
-    # convert to numpy
-    np_tensor = np.dstack(img_tensor.cpu().numpy())
-    if ipython:
-        plt.imshow(np_tensor.transpose(1, 2, 0))
+
+    # first format the first arg to be hz-stacked numpy arrays
+    if not isinstance(images, list):
+        images = [images]
+    images = [utils.safe_tensor(image) for image in images]
+    images = [np.dstack(image.cpu().numpy()) for image in images]
+    image_shape = images[0].shape
+    assert all(image.shape == image_shape for image in images)
+    assert all(image.ndim == 3 for image in images) # CxHxW
+
+    # now build the list of final rows
+    rows = []
+    if margin_height >0:
+        assert margin_color in ['red', 'black']
+        margin_shape = list(image_shape)
+        margin_shape[1] = margin_height
+        margin = np.zeros(margin_shape)
+        if margin_color == 'red':
+            margin[0] = 1
     else:
-        transforms.ToPILImage()(torch.from_numpy(np_tensor)).show()
+        margin = None
+
+    for image_row in images:
+        rows.append(margin)
+        rows.append(image_row)
+
+    rows = [_ for _ in rows[1:] if _ is not None]
+    plt.imshow(np.concatenate(rows, 1).transpose(1, 2, 0))
+
+    plt.show()
+
+
 
 
 def display_adversarial_2row(classifier_net, normalizer, original_images,
