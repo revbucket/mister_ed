@@ -37,8 +37,9 @@ class ParameterizedTransformation(nn.Module):
     - forward : Variable -> Variable - is the transformation
     """
 
-    def __init__(self):
+    def __init__(self, **kwargs):
         super(ParameterizedTransformation, self).__init__()
+        self.use_gpu = kwargs.get('use_gpu', False)
 
     def norm(self, lp='inf'):
         raise NotImplementedError("Need to call subclass's norm!")
@@ -120,6 +121,8 @@ class FullSpatial(ParameterizedTransformation):
         # Work smarter not harder -- use idenity affine transforms here
         num_examples = shape[0]
         identity_affine_transform = torch.zeros(num_examples, 2, 3)
+        if self.use_gpu:
+            identity_affine_transform.cuda()
 
         identity_affine_transform[:,0,0] = 1
         identity_affine_transform[:,1,1] = 1
@@ -234,6 +237,8 @@ class AffineTransform(ParameterizedTransformation):
         # Work smarter not harder -- use idenity affine transforms here
         num_examples = shape[0]
         identity_affine_transform = torch.zeros(num_examples, 2, 3)
+        if self.use_gpu:
+            identity_affine_transform.cuda()
 
         identity_affine_transform[:,0,0] = 1
         identity_affine_transform[:,1,1] = 1
@@ -282,13 +287,17 @@ class RotationTransform(AffineTransform):
     @classmethod
     def identity_params(cls, shape):
         num_examples = shape[0]
-        return torch.zeros(num_examples)
+        params = torch.zeros(num_examples)
+        if self.use_gpu:
+            params.cuda()
+        return params
+
 
     def make_grid(self, x):
         assert isinstance(x, Variable)
         cos_xform = self.xform_params.cos()
         sin_xform = self.xform_params.sin()
-        zeros = Variable(torch.zeros(self.xform_params.shape))
+        zeros = Variable(torch.zeros_like(self.xform_params))
 
         affine_xform = torch.stack([cos_xform, -sin_xform, zeros,
                                     sin_xform, cos_xform,  zeros])
@@ -312,7 +321,10 @@ class TranslationTransform(AffineTransform):
     @classmethod
     def identity_params(cls, shape):
         num_examples = shape[0]
-        return torch.zeros(num_examples, 2) # x and y translation only
+        params = torch.zeros(num_examples, 2) # x and y translation only
+        if self.use_gpu:
+            params.cuda()
+        return params
 
     def make_grid(self, x):
         assert isinstance(x, Variable)

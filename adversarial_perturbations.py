@@ -329,7 +329,7 @@ class DeltaAddition(AdversarialPerturbation):
 
     def setup(self, x):
         super(DeltaAddition, self).setup(x)
-        self.delta = nn.Parameter(torch.zeros(x.shape))
+        self.delta = nn.Parameter(torch.zeros_like(x.shape))
         self.initialized = True
 
     @initialized
