@@ -25,12 +25,15 @@ To get started immediately, you'll need to ensure that you have access to a pret
 - `dataset_path`: if you already have datasets on your machine, simply set this to the directory where they live. Datasets can be downloaded using standard [`pytorch.torchvision` methods](http://pytorch.org/docs/master/torchvision/datasets.html).
 - `model_path`: if you already have pretrained pytorch models on your machine, simply set this to the directory where they live. Pretrained models are saved as files ending in `.th`, using the standard `torch.save(model.state_dict(), ...)` method.
 
-To get you going as quickly as possible, run the `mister_ed/scripts/setup_cifar.py` script to do the following:
+To get you going as quickly as possible, run the 
+
+```python scripts/setup_cifar.py``` 
+script to do the following:
 1. Ensure all dependencies are installed correctly 
 2. Ensure that CIFAR data can be accessed locally 
 3. Ensure that a functional classifier for CIFAR has been loaded. By default, [pretrained CIFAR10 resnets](https://github.com/akamaster/pytorch_resnet_cifar10) from Yerlan Idelbayev are used.
 
-## Brief Overview of Library Contents
+## Brief Overview of Library Contents [THIS IS ALL DEPRECATED AS OF 4/26/18. IGNORE FOR NOW!]
 Leveraging python's OOP nature, attacks, defenses, loss functions, and evaluations are wrapped up objects, which are all defined in the top level directory of `mister_ed`. Helper functions, and application specific files are stored in lower level directories (e.g. utilities for image processing and general pytorch helpers are contained in the `mister_ed/utils` directory, and CIFAR10-specific architectures and dataloaders are contained in the `mister_ed/cifar10` directory). 
 
 The important classes to understand are `DifferentiableNormalize`, `RegularizedLoss`, `AdversarialAttack`, `AdversarialAttackParameters`, `AdversarialEvaluation`.
