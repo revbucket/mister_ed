@@ -106,8 +106,8 @@ class FullSpatial(ParameterizedTransformation):
         self.xform_params = nn.Parameter(self.identity_params(img_shape))
 
 
-    @classmethod
-    def identity_params(cls, shape):
+
+    def identity_params(self, shape):
         """ Returns some grid parameters such that the minibatch of images isn't
             changed when forward is called on it
         ARGS:
@@ -284,8 +284,8 @@ class RotationTransform(AffineTransform):
         self.xform_params = nn.Parameter(self.identity_params(img_shape))
         '''
 
-    @classmethod
-    def identity_params(cls, shape):
+
+    def identity_params(self, shape):
         num_examples = shape[0]
         params = torch.zeros(num_examples)
         if self.use_gpu:
@@ -297,7 +297,7 @@ class RotationTransform(AffineTransform):
         assert isinstance(x, Variable)
         cos_xform = self.xform_params.cos()
         sin_xform = self.xform_params.sin()
-        zeros = Variable(torch.zeros_like(self.xform_params))
+        zeros = utils.safe_var(torch.zeros_like(self.xform_params))
 
         affine_xform = torch.stack([cos_xform, -sin_xform, zeros,
                                     sin_xform, cos_xform,  zeros])
@@ -318,8 +318,8 @@ class TranslationTransform(AffineTransform):
         super(TranslationTransform, self).__init__(shape=kwargs['shape'])
 
 
-    @classmethod
-    def identity_params(cls, shape):
+
+    def identity_params(self, shape):
         num_examples = shape[0]
         params = torch.zeros(num_examples, 2) # x and y translation only
         if self.use_gpu:

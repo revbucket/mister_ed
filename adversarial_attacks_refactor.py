@@ -313,7 +313,7 @@ class PGD(AdversarialAttack):
             loss = self.loss_fxn.forward(perturbation(var_examples), var_labels)
             loss = -1 * loss
             torch.autograd.backward(loss)
-            print float(loss)
+
             if signed:
                 perturbation.update_params(update_fxn)
             else:
