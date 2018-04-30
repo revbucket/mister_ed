@@ -340,7 +340,6 @@ def fold_mask(x, y, mask):
     assert x.shape == y.shape
     assert mask.shape == (x.shape[0],)
     assert type(x) == type(y)
-
     is_var = isinstance(x, Variable)
     if is_var:
         assert isinstance(mask, Variable)

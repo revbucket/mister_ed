@@ -12,7 +12,7 @@ import random
 
 import utils.pytorch_utils as utils
 import utils.image_utils as img_utils
-import adversarial_attacks as attacks
+import adversarial_attacks_refactor as attacks
 import utils.checkpoints as checkpoints
 
 
@@ -30,7 +30,7 @@ class AdversarialAttackParameters(object):
                  attack_specific_params=None):
         """ Stores params for how to use adversarial attacks in training
         ARGS:
-            adv_attack_obj : AdversarialAt tack subclass -
+            adv_attack_obj : AdversarialAttack subclass -
                              thing that actually does the attack
             proportion_attacked: float between [0.0, 1.0] - what proportion of
                                  the minibatch we build adv examples for
@@ -45,21 +45,6 @@ class AdversarialAttackParameters(object):
         self.attack_specific_params = attack_specific_params
         self.attack_kwargs = attack_specific_params.get('attack_kwargs', {})
 
-
-        # Block to build fxn to select output based on which type of class
-        if isinstance(adv_attack_obj, (attacks.FGSM, attacks.BIM,
-                                       attacks.LInfPGD)):
-            self.output_filter = lambda d: d # also selects output
-
-        elif isinstance(adv_attack_obj, attacks.CW):
-            def output_filter(output_dict, params=self.attack_specific_params):
-                cutoff = (params or {}).get('cutoff', None)
-                return attacks.CW.filter_outputs(output_dict,
-                                                   cutoff_metric=cutoff)
-            self.output_filter = output_filter
-
-        else:
-            raise Exception("Invalid attack type")
 
     def set_gpu(self, use_gpu):
         """ Propagates changes of the 'use_gpu' parameter down to the attack
@@ -101,9 +86,10 @@ class AdversarialAttackParameters(object):
         adv_inputs = inputs.index_select(0, selected_idxs)
         pre_adv_labels = labels.index_select(0, selected_idxs)
 
-        adv_examples = self.adv_attack_obj.attack(adv_inputs, pre_adv_labels,
+        perturbation = self.adv_attack_obj.attack(adv_inputs, pre_adv_labels,
                                                   **self.attack_kwargs)
-        adv_examples = self.output_filter(adv_examples)
+        adv_examples = perturbation(Variable(adv_inputs)).data
+
 
         return (adv_examples, pre_adv_labels, selected_idxs)
 
@@ -280,7 +266,7 @@ class AdversarialTraining(object):
         return inputs, labels
 
 
-    def train(self, data_loader, num_epochs, loss_fxn,
+    def train(self, data_loader, num_epochs, train_loss,
               optimizer=None, attack_parameters=None, use_gpu=False,
               verbosity='medium', starting_epoch=0):
         """ Modifies the NN weights of self.classifier_net by training with
@@ -315,7 +301,6 @@ class AdversarialTraining(object):
         assert isinstance(num_epochs, int)
 
         if attack_parameters is not None:
-            assert isinstance(attack_parameters, AdversarialAttackParameters)
             # assert that the adv attacker uses the NN that's being trained
             assert (attack_parameters.adv_attack_obj.classifier_net ==
                     self.classifier_net)
@@ -324,7 +309,8 @@ class AdversarialTraining(object):
         assert not (use_gpu and not cuda.is_available())
         if use_gpu:
             self.classifier_net.cuda()
-        attack_parameters.set_gpu(use_gpu)
+        if attack_parameters is not None:
+            attack_parameters.set_gpu(use_gpu)
 
         # Verbosity parameters
         assert verbosity in ['low', 'medium', 'high', 'snoop', None]
@@ -364,7 +350,7 @@ class AdversarialTraining(object):
 
                 # forward step
                 outputs = self.classifier_net.forward(self.normalizer(inputs))
-                loss = loss_fxn.forward(outputs, labels)
+                loss = train_loss.forward(outputs, labels)
 
                 # backward step
                 loss.backward()
