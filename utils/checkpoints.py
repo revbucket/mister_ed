@@ -1,4 +1,4 @@
-""" Code for saving/loading pytorch models
+""" Code for saving/loading pytorch models and batches of adversarial images
 
 CHECKPOINT NAMING CONVENTIONS:
     <unique_experiment_name>.<architecture_abbreviation>.<6 digits of epoch number>path.tar
@@ -15,11 +15,18 @@ import torch
 import os
 import re
 import glob
-
 import config
-
-
+import numpy as np
+import utils.pytorch_utils as utils
+import random
 CHECKPOINT_DIR = config.MODEL_PATH
+OUTPUT_IMAGE_DIR = config.OUTPUT_IMAGE_PATH
+
+##############################################################################
+#                                                                            #
+#                               CHECKPOINTING MODELS                         #
+#                                                                            #
+##############################################################################
 
 
 def clear_experiment(experiment_name, architecture):
@@ -156,6 +163,147 @@ def load_state_dict(experiment_name, architecture, epoch, model):
 
     filename = params_to_filename(experiment_name, architecture, epoch)
     return load_state_dict_from_filename(filename, model)
+
+
+###############################################################################
+#                                                                             #
+#                              CHECKPOINTING DATA                             #
+#                                                                             #
+###############################################################################
+"""
+    This is a hacky fix to save batches of adversarial images along with their
+    labels.
+"""
+
+class CustomDataSaver(object):
+    # TODO: make this more pytorch compliant
+    def __init__(self, image_subdirectory):
+        self.image_subdirectory = image_subdirectory
+        # make this folder if it doesn't exist yet
+
+
+    def save_minibatch(self, examples, labels):
+        """ Assigns a random name to this minibatch and saves the examples and
+            labels in two separate files:
+            <random_name>.examples.npy and <random_name>.labels.npy
+        ARGS:
+            examples: Variable or Tensor (NxCxHxW) - examples to be saved
+            labels : Variable or Tensor (N) - labels matching the examples
+        """
+        # First make both examples and labels into numpy arrays
+        examples = utils.safe_tensor(examples).cpu().numpy()
+        labels = utils.safe_tensor(labels).cpu().numpy()
+
+        # Make a name for the files
+        random_string = str(random.random())[2:] # DO THIS BETTER WHEN I HAVE INTERNET
+
+        # Save both files
+        example_file = '%s.examples.npy' % random_string
+        example_path = os.path.join(OUTPUT_IMAGE_DIR, self.image_subdirectory,
+                                    example_file)
+        np.save(example_path, examples)
+
+        label_file = '%s.labels.npy' % random_string
+        label_path = os.path.join(OUTPUT_IMAGE_DIR, self.image_subdirectory,
+                                  label_file)
+        np.save(label_path, labels)
+
+
+
+class CustomDataLoader(object):
+    # TODO: make this more pytorch compliant
+    def __init__(self, image_subdirectory, batch_size=128, to_tensor=True,
+                 use_gpu=False):
+        super(CustomDataLoader, self).__init__()
+        self.image_subdirectory = image_subdirectory
+        self.batch_size = batch_size
+
+        assert to_tensor >= use_gpu
+        self.to_tensor = to_tensor
+        self.use_gpu = use_gpu
+
+
+    def _prepare_data(self, examples, labels):
+        """ Takes in numpy examples and labels and tensor-ifies and cuda's them
+            if necessary
+        """
+
+        if self.to_tensor:
+            examples = torch.Tensor(examples)
+            labels = torch.Tensor(labels)
+
+        if self.use_gpu:
+            examples = examples.cuda()
+            labels = labels.cuda()
+
+        return (examples, labels)
+
+    def _base_loader(self, prefix, which):
+        assert which in ['examples', 'labels']
+        filename = '%s.%s.npy' % (prefix, which)
+        full_path = os.path.join(OUTPUT_IMAGE_DIR, self.image_subdirectory,
+                                 filename)
+        return np.load(full_path)
+
+    def _example_loader(self, prefix):
+        """ Loads the numpy array of examples given the random 'prefix' """
+        return self._base_loader(prefix, 'examples')
+
+    def _label_loader(self, prefix):
+        """ Loads the numpy array of labels given the random 'prefix' """
+        return self._base_loader(prefix, 'labels')
+
+
+    def __iter__(self):
+
+        # First collect all the filenames:
+        glob_prefix = os.path.join(OUTPUT_IMAGE_DIR, self.image_subdirectory,
+                                   '*')
+        files = glob.glob(glob_prefix)
+        valid_random_names = set(os.path.basename(_).split('.')[0]
+                                 for _ in files)
+
+        # Now loop through filenames and yield out minibatches of correct size
+        running_examples, running_labels = [], []
+        running_size = 0
+        for random_name in valid_random_names:
+            # Load data from files and append to 'running' lists
+            loaded_examples = self._example_loader(random_name)
+            loaded_labels = self._label_loader(random_name)
+            running_examples.append(loaded_examples)
+            running_labels.append(loaded_labels)
+            running_size += loaded_examples.shape[0]
+
+            if running_size < self.batch_size:
+                # Load enough data to populate one minibatch, which might
+                # take multiple files
+                continue
+
+            # Concatenate all images together
+            merged_examples = np.concatenate(running_examples, axis=0)
+            merged_labels = np.concatenate(running_labels, axis=0)
+
+            # Make minibatches out of concatenated things,
+            for batch_no in xrange(running_size / self.batch_size):
+                index_lo = batch_no * self.batch_size
+                index_hi = index_lo + self.batch_size
+                example_batch = merged_examples[index_lo:index_hi]
+                label_batch = merged_labels[index_lo:index_hi]
+                yield self._prepare_data(example_batch, label_batch)
+
+            # Handle any remainder for remaining files
+            remainder_idx = (running_size / self.batch_size) * self.batch_size
+            running_examples = [merged_examples[remainder_idx:]]
+            running_labels = [merged_labels[remainder_idx:]]
+            running_size = running_size - remainder_idx
+
+        # If we're out of files, yield this last sub-minibatch of data
+        if running_size > 0:
+            merged_examples = np.concatenate(running_examples, axis=0)
+            merged_labels = np.concatenate(running_labels, axis=0)
+            yield self._prepare_data(merged_examples, merged_labels)
+
+
 
 
 

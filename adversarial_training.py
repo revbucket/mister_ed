@@ -223,14 +223,14 @@ class AdversarialTraining(object):
 
 
     def _attack_subroutine(self, attack_parameters, inputs, labels,
-                           epoch_num, minibatch_num):
+                           epoch_num, minibatch_num, adv_saver):
         """ Subroutine to run the specified attack on a minibatch and append
             the results to inputs/labels.
 
         NOTE: THIS DOES NOT MUTATE inputs/labels !!!!
 
         ARGS:
-            attack_parameters:  AdversarialAttackParameters obj (or none) -
+            attack_parameters:  AdversarialAttackParameters[] (or None) -
                                 if not None, contains info on how to do adv
                                 attacks. If None, we don't train adversarially
             inputs : Tensor (NxCxHxW) - minibatch of data we build adversarial
@@ -240,6 +240,9 @@ class AdversarialTraining(object):
                         Is helpful for printing
             minibatch_num : int - number of which minibatch we're working on.
                             Is helpful for printing
+            adv_saver : None or checkpoints.CustomDataSaver -
+                        if not None, we save the adversarial images for later
+                        use, else we don't save them.
         RETURNS:
             inputs, labels (but with augmentation in N b/c we built adversarial
                             examples)
@@ -249,38 +252,48 @@ class AdversarialTraining(object):
             return inputs, labels
 
 
-        adv_data = attack_parameters.attack(inputs, labels)
-        adv_inputs, adv_labels, adv_idxs = adv_data
+        assert isinstance(attack_parameters, list)
 
-        if (self.verbosity_level >= 1 and
-            minibatch_num % self.verbosity_adv == self.verbosity_adv - 1):
-            accuracy = attack_parameters.eval(inputs,
-                                              adv_inputs,
-                                              labels,
-                                              adv_idxs)
-            print('[%d, %5d] accuracy: (%.3f, %.3f)' %
-              (epoch_num + 1, minibatch_num + 1, accuracy[1], accuracy[0]))
+        adv_inputs_total, adv_labels_total = [], []
+        for param in attack_parameters:
+            adv_data = param.attack(inputs, labels)
+            adv_inputs, adv_labels, adv_idxs = adv_data
 
-        inputs = torch.cat([inputs, adv_inputs], dim=0)
-        labels = torch.cat([labels, adv_labels], dim=0)
+            if (self.verbosity_level >= 1 and
+                minibatch_num % self.verbosity_adv == self.verbosity_adv - 1):
+                accuracy = param.eval(inputs, adv_inputs, labels, adv_idxs)
+                print('[%d, %5d] accuracy: (%.3f, %.3f)' %
+                  (epoch_num + 1, minibatch_num + 1, accuracy[1], accuracy[0]))
+
+            if adv_saver is not None: # Save the adversarial examples
+                adv_saver.save_minibatch(adv_inputs, adv_labels)
+
+            adv_inputs_total.append(adv_inputs)
+            adv_labels_total.append(adv_labels)
+
+        inputs = torch.cat([inputs]+ adv_inputs_total, dim=0)
+        labels = torch.cat([labels] + adv_labels_total, dim=0)
         return inputs, labels
 
 
     def train(self, data_loader, num_epochs, train_loss,
               optimizer=None, attack_parameters=None, use_gpu=False,
-              verbosity='medium', starting_epoch=0):
+              verbosity='medium', starting_epoch=0, adversarial_save_dir=None):
         """ Modifies the NN weights of self.classifier_net by training with
             the specified parameters s
         ARGS:
-            data_loader: torch.utils.data.DataLoader - object that loads the
+            data_loader: torch.utils.data.DataLoader OR
+                         checkpoints.CustomDataLoader - object that loads the
                          data
             num_epoch: int - number of epochs to train on
-            loss_fxn: ????  - TBD
+            train_loss: ????  - TBD
             optimizer: torch.Optimizer subclass - defaults to Adam with some
                        decent default params. Pass this in as an actual argument
                        to do anything different
-            attack_parameters:  AdversarialAttackParameters obj (or none) -
-                                if not None, contains info on how to do adv
+            attack_parameters:  AdversarialAttackParameters obj | None |
+                                AdversarialAttackParameters[] -
+                                if not None, is either an object or list of
+                                objects containing info on how to do adv
                                 attacks. If None, we don't train adversarially
             use_gpu : bool - if True, we use GPU's for things
             verbosity : string - must be 'low', 'medium', 'high', which
@@ -289,6 +302,9 @@ class AdversarialTraining(object):
                              for correct labeling of checkpoints and figuring
                              out how many epochs we actually need to run for
                              (i.e., num_epochs - starting_epoch)
+            adversarial_save_dir: string or None - if not None is the name of
+                                  the directory we save adversarial images to.
+                                  If None, we don't save adversarial images
         RETURNS:
             None, but modifies the classifier_net's weights
         """
@@ -301,16 +317,22 @@ class AdversarialTraining(object):
         assert isinstance(num_epochs, int)
 
         if attack_parameters is not None:
+            if not isinstance(attack_parameters, list):
+                attack_parameters = [attack_parameters]
+
+
             # assert that the adv attacker uses the NN that's being trained
-            assert (attack_parameters.adv_attack_obj.classifier_net ==
-                    self.classifier_net)
+            for param in attack_parameters:
+                assert (param.adv_attack_obj.classifier_net ==
+                        self.classifier_net)
 
 
         assert not (use_gpu and not cuda.is_available())
         if use_gpu:
             self.classifier_net.cuda()
         if attack_parameters is not None:
-            attack_parameters.set_gpu(use_gpu)
+            for param in attack_parameters:
+                param.set_gpu(use_gpu)
 
         # Verbosity parameters
         assert verbosity in ['low', 'medium', 'high', 'snoop', None]
@@ -318,6 +340,11 @@ class AdversarialTraining(object):
         verbosity_level = self.verbosity_level
         verbosity_minibatch = self.verbosity_minibatch
         verbosity_epoch = self.verbosity_epoch
+
+        # Adversarial image saver:
+        adv_saver = None
+        if adversarial_save_dir is not None and attack_parameters is not None:
+            adv_saver = checkpoints.CustomDataSaver(adversarial_save_dir)
 
 
         # setup loss fxn, optimizer
@@ -340,7 +367,9 @@ class AdversarialTraining(object):
                 # Build adversarial examples
                 inputs, labels = self._attack_subroutine(attack_parameters,
                                                          inputs, labels,
-                                                         epoch, i)
+                                                         epoch, i,
+                                                         adv_saver)
+
 
                 # Now proceed with standard training
                 self.normalizer.differentiable_call()
@@ -382,7 +411,8 @@ class AdversarialTraining(object):
     def train_from_checkpoint(self, data_loader, num_epochs, loss_fxn,
                               optimizer=None, attack_parameters=None,
                               use_gpu=False, verbosity='medium',
-                              starting_epoch='max'):
+                              starting_epoch='max',
+                              adversarial_save_dir=None):
         """ Resumes training from a saved checkpoint with the same architecture.
             i.e. loads weights from specified checkpoint, figures out which
                  epoch we checkpointed on and then continues training until
@@ -425,7 +455,8 @@ class AdversarialTraining(object):
                    attack_parameters=attack_parameters,
                    use_gpu=use_gpu,
                    verbosity=verbosity,
-                   starting_epoch=epoch)
+                   starting_epoch=epoch,
+                   adversarial_save_dir=adversarial_save_dir)
 
 
 
