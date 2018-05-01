@@ -445,7 +445,7 @@ def accuracy(output, target, topk=(1,)):
 ###############################################################################
 
 
-class IdentityNormalize(object):
+class IdentityNormalize(Function):
     def __init__(self):
         pass
 

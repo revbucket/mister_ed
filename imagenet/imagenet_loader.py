@@ -11,6 +11,7 @@ import torchvision.datasets as datasets
 import os
 import config
 import imagenet.pretrainedmodels as ptm
+import utils.pytorch_utils as utils
 
 ###############################################################################
 #                           PARSE CONFIGS                                     #
@@ -53,7 +54,24 @@ def load_pretrained_imagenet(arch='nasnetalarge', use_gpu=False):
     return model
 
 
+def normalizer_from_imagenet_model(model):
+    """ Imagenet models taken from the git repo are not normalized and have
+        different normalization means/stds. This builds a
+        DifferentiableNormalizer object
+    ARGS:
+        model : output of load_pretrained_imagenet
+    """
+    if hasattr(model, 'mean'):
+        mean = model.mean
+    else:
+        mean = DEFAULT_MEANS
 
+    if hasattr(model, 'std'):
+        std = model.std
+    else:
+        std = DEFAULT_STDS
+
+    return utils.DifferentiableNormalizer(mean, std)
 
 
 ###############################################################################
