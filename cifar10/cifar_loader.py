@@ -51,7 +51,7 @@ def load_pretrained_cifar_resnet(flavor=32, use_gpu=False):
 
 
     # need to modify the resnet state dict to be proper
-
+    # TODO: LOAD THESE INTO MODEL ZOO
     bad_state_dict = torch.load(weight_path, map_location=map_location)
     correct_state_dict = {re.sub(r'^module\.', '', k): v for k, v in
                           bad_state_dict['state_dict'].items()}
