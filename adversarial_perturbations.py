@@ -50,6 +50,11 @@ class AdversarialPerturbation(nn.Module):
         self.threat_model = threat_model
         self.initialized = False
         self.perturbation_params = perturbation_params
+        
+        if isinstance(perturbation_params, tuple):
+            self.use_gpu = perturbation_params[1].use_gpu or False
+        else:        
+            self.use_gpu = perturbation_params.use_gpu or False
         # Stores parameters of the adversarial perturbation and hyperparams
         # to compute total perturbation norm here
 
@@ -427,7 +432,8 @@ class ParameterizedXformAdv(AdversarialPerturbation):
 
     def setup(self, originals):
         super(ParameterizedXformAdv, self).setup(originals)
-        self.xform = self.perturbation_params.xform_class(shape=originals.shape)
+        self.xform = self.perturbation_params.xform_class(shape=originals.shape,
+                                                          use_gpu=self.use_gpu)
         self.initialized = True
 
     @initialized

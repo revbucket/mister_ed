@@ -402,7 +402,8 @@ class CarliniWagner(AdversarialAttack):
         RETURNS:
             RegularizedLoss OBJECT to be used as the loss for this optimization
         """
-        losses = {'distance_fxn': self.loss_classes['distance_fxn'](None),
+        losses = {'distance_fxn': self.loss_classes['distance_fxn'](None,
+                                                       use_gpu=self.use_gpu ),
                   'carlini_loss': self.loss_classes['carlini_loss'](
                                                     self.classifier_net,
                                                     self.normalizer,
@@ -594,7 +595,6 @@ class CarliniWagner(AdversarialAttack):
                                                var_examples, var_labels,
                                                var_scale, loss_fxn)
 
-                new_params = perturbation.delta.data.clone()
                 if loss_sum + 1e-10 > prev_loss * 0.99999 and optim_step >= 100:
                     if verbose:
                         print ("...stopping early on binary_search_step %02d "

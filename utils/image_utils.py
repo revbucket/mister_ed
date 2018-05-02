@@ -34,7 +34,8 @@ def nhwc255_xform(img_np_array):
 
 
 def show_images(images, normalize=None, ipython=True,
-                margin_height=2, margin_color='red'):
+                margin_height=2, margin_color='red',
+                figsize=(18,16)):
     """ Shows pytorch tensors/variables as images """
 
 
@@ -64,6 +65,7 @@ def show_images(images, normalize=None, ipython=True,
         rows.append(image_row)
 
     rows = [_ for _ in rows[1:] if _ is not None]
+    plt.figure(figsize=figsize, dpi=80, facecolor='w', edgecolor='k')    
     plt.imshow(np.concatenate(rows, 1).transpose(1, 2, 0))
 
     plt.show()
