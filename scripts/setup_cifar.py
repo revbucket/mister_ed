@@ -85,21 +85,23 @@ def load_cifar_classifiers():
 
     lacking_models = total_cifar_files - extant_models
 
-    LINK_DEPOT = {resnet_name(20)  : 'https://www.dropbox.com/s/glchyr9ljnpgvb5/cifar10_resnet20.th?dl=1',
-                  resnet_name(32)  : 'https://www.dropbox.com/s/kis991c5w2qtgpq/cifar10_resnet32.th?dl=1',
-                  resnet_name(44)  : 'https://www.dropbox.com/s/sigj56ysrti6s6a/cifar10_resnet44.th?dl=1',
-                  resnet_name(56)  : 'https://www.dropbox.com/s/3p6d5tkvdgcbru5/cifar10_resnet56.th?dl=1',
-                  resnet_name(110) : 'https://www.dropbox.com/s/sp172x5vjlypfw6/cifar10_resnet110.th?dl=1',
-                  resnet_name(1202): 'https://www.dropbox.com/s/4qxfa6dmdliw9ko/cifar10_resnet1202.th?dl=1'
+    LINK_DEPOT = {resnet_name(20)  :  'https://www.dropbox.com/s/glchyr9ljnpgvb5/cifar10_resnet20.th?dl=1',
+                  resnet_name(32)  :  'https://www.dropbox.com/s/kis991c5w2qtgpq/cifar10_resnet32.th?dl=1',
+                  resnet_name(44)  :  'https://www.dropbox.com/s/sigj56ysrti6s6a/cifar10_resnet44.th?dl=1',
+                  resnet_name(56)  :  'https://www.dropbox.com/s/3p6d5tkvdgcbru5/c7ifar10_resnet56.th?dl=1',
+                  resnet_name(110) :  'https://www.dropbox.com/s/sp172x5vjlypfw6/cifar10_resnet110.th?dl=1',
+                  resnet_name(1202):  'https://www.dropbox.com/s/4qxfa6dmdliw9ko/cifar10_resnet1202.th?dl=1',
+                  'Wide-Resnet28x10': 'https://www.dropbox.com/s/5ln2gow7mnxub29/cifar10_wide-resnet28x10.th?dl=1'
                 }
 
 
-    HASH_DEPOT = {resnet_name(20)  : '12fca82f0bebc4135bf1f32f6e3710e61d5108578464b84fd6d7f5c1b04036c8',
-                  resnet_name(32)  : 'd509ac1820d7f25398913559d7e81a13229b1e7adc5648e3bfa5e22dc137f850',
-                  resnet_name(44)  : '014dd6541728a1c700b1642ab640e211dc6eb8ed507d70697458dc8f8a0ae2e4',
-                  resnet_name(56)  : '4bfd97631478d6b638d2764fd2baff3edb1d7d82252d54439343b6596b9b5367',
-                  resnet_name(110) : '1d1ed7c27571399c1fef66969bc4df68d6a92c8e6c41170f444e120e5354e3bc',
-                  resnet_name(1202): 'f3b1deed382cd4c986ff8aa090c805d99a646e99d1f9227d7178183648844f62'}
+    HASH_DEPOT = {resnet_name(20)  :  '12fca82f0bebc4135bf1f32f6e3710e61d5108578464b84fd6d7f5c1b04036c8',
+                  resnet_name(32)  :  'd509ac1820d7f25398913559d7e81a13229b1e7adc5648e3bfa5e22dc137f850',
+                  resnet_name(44)  :  '014dd6541728a1c700b1642ab640e211dc6eb8ed507d70697458dc8f8a0ae2e4',
+                  resnet_name(56)  :  '4bfd97631478d6b638d2764fd2baff3edb1d7d82252d54439343b6596b9b5367',
+                  resnet_name(110) :  '1d1ed7c27571399c1fef66969bc4df68d6a92c8e6c41170f444e120e5354e3bc',
+                  resnet_name(1202):  'f3b1deed382cd4c986ff8aa090c805d99a646e99d1f9227d7178183648844f62',
+                  'Wide-Resnet28x10': 'd6a68ec2135294d91f9014abfdb45232d07fda0cdcd67f8c3b3653b28f08a88f'}
 
     for name in lacking_models:
         link = LINK_DEPOT[name]

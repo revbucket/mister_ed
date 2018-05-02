@@ -30,5 +30,9 @@ DEFAULT_WORKERS = config_dict['default_workers']
 CIFAR10_MEANS = config_dict['cifar10_means']
 CIFAR10_STDS = config_dict['cifar10_stds']
 
+WIDE_CIFAR10_MEANS = config_dict['wide_cifar10_means']
+WIDE_CIFAR10_STDS = config_dict['wide_cifar10_stds']
+
+
 IMAGENET_MEANS = config_dict['imagenet_means']
 IMAGENET_STDS = config_dict['imagenet_stds']

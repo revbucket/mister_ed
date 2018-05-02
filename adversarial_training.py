@@ -389,7 +389,7 @@ class AdversarialTraining(object):
                 running_loss += loss.data[0]
                 if (verbosity_level >= 1 and
                     i % verbosity_minibatch == verbosity_minibatch - 1):
-                    print('[%d, %5d] loss: %.3f' %
+                    print('[%d, %5d] loss: %.6f' %
                           (epoch + 1, i + 1, running_loss / 2000))
                     running_loss = 0.0
 

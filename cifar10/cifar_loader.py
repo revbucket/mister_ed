@@ -5,7 +5,8 @@ import torch
 import torchvision.transforms as transforms
 import torchvision.datasets as datasets
 import cifar10.cifar_resnets as cifar_resnets
-
+import cifar10.wide_resnets as wide_resnets
+import utils.pytorch_utils as utils
 import config
 import os
 import re
@@ -21,7 +22,8 @@ DEFAULT_BATCH_SIZE   = config.DEFAULT_BATCH_SIZE
 DEFAULT_WORKERS      = config.DEFAULT_WORKERS
 CIFAR10_MEANS        = config.CIFAR10_MEANS
 CIFAR10_STDS         = config.CIFAR10_STDS
-
+WIDE_CIFAR10_MEANS   = config.WIDE_CIFAR10_MEANS
+WIDE_CIFAR10_STDS    = config.WIDE_CIFAR10_STDS
 ###############################################################################
 #                          END PARSE CONFIGS                                  #
 ###############################################################################
@@ -33,8 +35,10 @@ CIFAR10_STDS         = config.CIFAR10_STDS
 #                                                                            #
 ##############################################################################
 
-def load_pretrained_cifar_resnet(flavor=32, use_gpu=False):
-    """ Helper fxn to initialize/load the pretrained cifar resnet """
+def load_pretrained_cifar_resnet(flavor=32, use_gpu=False,
+                                 return_normalizer=False):
+    """ Helper fxn to initialize/load the pretrained cifar resnet
+    """
 
     # Resolve load path
     valid_flavor_numbers = [110, 1202, 20, 32, 44, 56]
@@ -60,7 +64,33 @@ def load_pretrained_cifar_resnet(flavor=32, use_gpu=False):
     classifier_net = eval("cifar_resnets.resnet%s" % flavor)()
     classifier_net.load_state_dict(correct_state_dict)
 
+    if return_normalizer:
+        normalizer = utils.DifferentiableNormalizer(mean=CIFAR10_MEANS,
+                                                    std=CIFAR10_STDS)
+        return classifier_net, normalizer
+
     return classifier_net
+
+
+def load_pretrained_cifar_wide_resnet(use_gpu=False, return_normalizer=False):
+    """ Helper fxn to initialize/load a pretrained 28x10 CIFAR resnet """
+
+    weight_path = os.path.join(RESNET_WEIGHT_PATH,
+                               'cifar10_wide-resnet28x10.th')
+    state_dict = torch.load(weight_path)
+    classifier_net = wide_resnets.Wide_ResNet(28, 10, 0, 10)
+
+    classifier_net.load_state_dict(state_dict)
+
+    if return_normalizer:
+        normalizer = utils.DifferentiableNormalizer(mean=WIDE_CIFAR10_MEANS,
+                                                    std=WIDE_CIFAR10_STDS)
+        return classifier_net, normalizer
+
+    return classifier_net
+
+
+
 
 
 
