@@ -242,15 +242,16 @@ class PGD(AdversarialAttack):
                  use_gpu=False):
         super(PGD, self).__init__(classifier_net, normalizer, threat_model,
                                   use_gpu=use_gpu)
-        self.loss_fxn = loss_fxn
+        self.loss_fxn = loss_fxn # WE MINIMIZE THIS!!!
 
     def attack(self, examples, labels, step_size=1.0/255.0,
                num_iterations=20, random_init=False, signed=True,
-               verbose=True):
+               optimizer=None, optimizer_kwargs=None, verbose=True):
         """ Builds PGD examples for the given examples with l_inf bound and
             given step size. Is almost identical to the BIM attack, except
             we take steps that are proportional to gradient value instead of
-            just their sign
+            just their sign.
+
         ARGS:
             examples: NxCxHxW tensor - for N examples, is NOT NORMALIZED
                       (i.e., all values are in between 0.0 and 1.0)
@@ -304,13 +305,18 @@ class PGD(AdversarialAttack):
                            iter_no="RANDOM")
 
         # Build optimizer techniques for both signed and unsigned methods
-        optimizer = optim.Adam(perturbation.parameters(), lr=0.0001)
+        optimizer = optimizer or optim.Adam
+        if optimizer_kwargs is None:
+            optimizer_kwargs = {'lr':0.0001}
+        optimizer = optimizer(perturbation.parameters(), **optimizer_kwargs)
+
         update_fxn = lambda grad_data: -1 * step_size * torch.sign(grad_data)
 
 
         for iter_no in xrange(num_iterations):
             perturbation.zero_grad()
-            loss = self.loss_fxn.forward(perturbation(var_examples), var_labels)
+            loss = self.loss_fxn.forward(perturbation(var_examples), var_labels,
+                                         perturbation=perturbation)
             loss = -1 * loss
             torch.autograd.backward(loss)
 

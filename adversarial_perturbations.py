@@ -334,9 +334,10 @@ class DeltaAddition(AdversarialPerturbation):
         self.initialized = True
 
     @initialized
-    def perturbation_norm(self):
-        assert isinstance(self.lp_style, int) or self.lp_style == 'inf'
-        return utils.summed_lp_norm(self.delta, lp=self.lp_style)
+    def perturbation_norm(self, x=None, lp_style=None):
+        lp_style = lp_style or self.lp_style
+        assert isinstance(lp_style, int) or lp_style == 'inf'
+        return utils.summed_lp_norm(self.delta, lp=lp_style)
 
 
     @initialized
@@ -430,8 +431,9 @@ class ParameterizedXformAdv(AdversarialPerturbation):
         self.initialized = True
 
     @initialized
-    def perturbation_norm(self):
-        return self.xform.norm(lp=self.lp_style)
+    def perturbation_norm(self, x=None, lp_style=None):
+        lp_style = lp_style or self.lp_style
+        return self.xform.norm(lp=lp_style)
 
     @initialized
     def constrain_params(self, x=None):
@@ -559,20 +561,21 @@ class SequentialPerturbation(AdversarialPerturbation):
 
 
     @initialized
-    def perturbation_norm(self, x=None):
+    def perturbation_norm(self, x=None, lp_style=None):
         # Need to define a nice way to describe the norm here. This can be
         # an empirical norm between input/output
 
+
         # For now, let's just say it's the sum of the norms of each constituent
-        if self.norm is None:
-            return self.norm(self.pipeline, x=x)
+        if self.norm is not None:
+            return self.norm(self.pipeline, x=x, lp_style=lp_style)
         else:
             out = None
             for layer in self.pipeline:
                 if out is None:
-                    out = layer.perturbation_norm(x=x)
+                    out = layer.perturbation_norm(x=x, lp_style=lp_style)
                 else:
-                    out = out + layer.perturbation_norm(x=x)
+                    out = out + layer.perturbation_norm(x=x, lp_style=lp_style)
             return out
 
     @initialized

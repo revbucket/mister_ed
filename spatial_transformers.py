@@ -144,7 +144,8 @@ class FullSpatial(ParameterizedTransformation):
             grid_sample
         """
         clamp_params = torch.clamp(self.xform_params, -1, 1).data
-        self.xform_params = nn.Parameter(clamp_params)
+        change_in_params = clamp_params - self.xform_params.data
+        self.xform_params.data.add_(change_in_params)
 
 
     def merge_xform(self, other, self_mask):
@@ -188,7 +189,8 @@ class FullSpatial(ParameterizedTransformation):
             identity_params = self.identity_params(self.img_shape)
             clamp_params = utils.clamp_ref(self.xform_params.data,
                                                identity_params, lp_bound)
-            self.xform_params = nn.Parameter(clamp_params)
+            change_in_params = clamp_params - self.xform_params.data
+            self.xform_params.data.add_(change_in_params)
         else:
             raise NotImplementedError("Only L-infinity bounds working for now ")
 

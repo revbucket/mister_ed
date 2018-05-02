@@ -7,6 +7,7 @@ import utils.image_utils as img_utils
 import spatial_transformers as st
 from torch.autograd import Variable
 from functools import partial
+import adversarial_perturbations as ap
 
 """ Loss function building blocks """
 
@@ -19,19 +20,21 @@ from functools import partial
 class RegularizedLoss(object):
     """ Wrapper for multiple PartialLoss objects where we combine with
         regularization constants """
-    def __init__(self, losses, scalars):
+    def __init__(self, losses, scalars, negate=False):
         """
         ARGS:
             losses : dict - dictionary of partialLoss objects, each is keyed
                             with a nice identifying name
             scalars : dict - dictionary of scalars, each is keyed with the
                              same identifying name as is in self.losses
+            negate : bool - if True, we negate the whole thing at the end
         """
 
         assert sorted(losses.keys()) == sorted(scalars.keys())
 
         self.losses = losses
         self.scalars = scalars
+        self.negate = negate
 
     def forward(self, examples, labels, *args, **kwargs):
 
@@ -57,7 +60,10 @@ class RegularizedLoss(object):
             else:
                 output = output + addendum
 
-        return output
+        if self.negate:
+            return output * -1
+        else:
+            return output
 
 
     def setup_attack_batch(self, fix_im):
@@ -375,6 +381,30 @@ class FullSpatialLpLoss(PartialLoss):
         diffs = st_obj.grid_params - identity_map
         lp_norm = utils.batchwise_norm(diffs, self.lp, dim=0)
         return lp_norm # return Nx1 variable, will sum in parent class
+
+
+class PerturbationNormLoss(PartialLoss):
+
+    def __init__(self, **kwargs):
+        super(PerturbationNormLoss, self).__init__()
+
+        lp = kwargs.get('lp', 2)
+        assert lp in [1, 2, 'inf']
+        self.lp = lp
+
+
+    def forward(self, examples, *args, **kwargs):
+        """ Computes perturbation norm and multiplies by scale
+        There better be a kwarg with key 'perturbation' which is a perturbation
+        object with a 'perturbation_norm' method that takes 'lp_style' as a
+        kwarg
+        """
+
+        perturbation = kwargs['perturbation']
+        assert isinstance(perturbation, ap.AdversarialPerturbation)
+
+        return perturbation.perturbation_norm(lp_style=self.lp)
+
 
 
 
