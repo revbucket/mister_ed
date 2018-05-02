@@ -16,11 +16,183 @@ import torch
 from torch.autograd import Variable
 import utils.pytorch_utils as utils
 import utils.image_utils as img_utils
+import custom_lpips.custom_dist_model as dm
 import os
 import config
 import glob
 import numpy as np
 import math
+
+###########################################################################
+#                                                                         #
+#                               EVALUATION RESULT OBJECT                  #
+#                                                                         #
+###########################################################################
+
+class EvaluationResult(object):
+    """ Stores results of adversarial evaluations, will be used in the
+        output of AdversarialEvaluation
+    """
+
+    def __init__(self, attack_params, classifier_net, normalizer, to_eval=None,
+                 use_gpu=False):
+        """ to_eval is a dict of {str : toEval methods}.
+        """
+        self.attack_params = attack_params
+        self.classifier_net = classifier_net
+        self.normalizer = normalizer
+        self.use_gpu = use_gpu
+
+        # First map shorthand strings to methods
+        shorthand_evals = {'top1': self.top1_accuracy,
+                           'avg_successful_lpips': self.avg_successful_lpips}
+        if to_eval is None:
+            to_eval = {'top1': 'top1'}
+
+        for key, val in list(to_eval.items()):
+            if val in shorthand_evals:
+                to_eval[key] = shorthand_evals[val]
+        self.to_eval = to_eval
+        self.results = {k: None for k in self.to_eval}
+        self.params = {k: None for k in self.to_eval}
+
+    def set_gpu(self, use_gpu):
+        self.attack_params.set_gpu(use_gpu)
+
+    def eval(self, examples, labels):
+        attack_out = self.attack_params.attack(examples, labels)
+        for k, v in self.to_eval.items():
+            v(k, attack_out, examples, labels)
+
+
+    def _get_successful_attacks(self, attack_out, ground_examples, labels):
+        # Success is defined as f(x) != f(adv(x))
+        # attack_out is f(adv(x)), so need to compute f(x)
+        # --- first select the ground examples from the indices
+
+        # --- compute the LPIPS distance
+        img_shape = (-1,) + tuple(ground_examples.shape[1:])
+        img_dim = len(ground_examples.shape[1:])
+        mask = torch.zeros_like(labels).type(torch.ByteTensor)
+        if labels.is_cuda:
+            mask = mask.cuda()
+        mask[attack_out[2]] = 1
+        selected_grounds = ground_examples.masked_select(mask).view(*img_shape)
+
+        # --- next classify these inputs
+        ground_logits = self.classifier_net(
+                            self.normalizer(Variable(selected_grounds)))
+        ground_class_out = torch.max(ground_logits, 1)[1].data
+
+        # --- and compare to adversarial labels to find successful attacks
+        successful_attacks = attack_out[1] != ground_class_out
+        #successful_attacks = successful_attacks.view(-1, *([1] * img_dim))
+
+
+        num_successful = int(successful_attacks.shape[0])
+        if num_successful == 0:
+            return None, None
+
+        # --- now select only the successful attacks
+        succ_atk_bcast = successful_attacks.view(-1, *([1] * img_dim))
+        successful_pert = attack_out[0].masked_select(succ_atk_bcast)\
+                                       .view(*img_shape)
+        successful_orig = selected_grounds.masked_select(succ_atk_bcast)\
+                                          .view(*img_shape)
+
+        return successful_pert, successful_orig
+
+
+
+    def top1_accuracy(self, eval_label, attack_out, ground_examples,
+                      labels):
+
+        ######################################################################
+        #  First set up evaluation result if doesn't exist:                  #
+        ######################################################################
+        if self.results[eval_label] is None:
+            self.results[eval_label] = utils.AverageMeter()
+
+        result = self.results[eval_label]
+
+        ######################################################################
+        #  Computes the top 1 accuracy and updates the averageMeter          #
+        ######################################################################
+        attack_examples = Variable(attack_out[0])
+        pre_adv_labels = Variable(attack_out[1])
+        num_examples = float(attack_examples.shape[0])
+
+        attack_accuracy_int = self.attack_params.eval_attack_only(
+                                                attack_examples,
+                                                pre_adv_labels, topk=1)
+        result.update(attack_accuracy_int / num_examples, n=int(num_examples))
+
+
+    def avg_successful_lpips(self, eval_label, attack_out, ground_examples,
+                             labels):
+        ######################################################################
+        #  First set up evaluation result if doesn't exist:                  #
+        ######################################################################
+        if self.results[eval_label] is None:
+            self.results[eval_label] = utils.AverageMeter()
+            self.dist_model = dm.DistModel(net='alex', use_gpu=self.use_gpu)
+
+        result = self.results[eval_label]
+
+        if self.params[eval_label] is None:
+            dist_model = dm.DistModel(net='alex', use_gpu=self.use_gpu)
+            self.params[eval_label] = {'dist_model': dist_model}
+
+        dist_model = self.params[eval_label]['dist_model']
+
+        ######################################################################
+        #  Compute which attacks were successful                             #
+        ######################################################################
+        successful_pert, successful_orig = self._get_successful_attacks(
+                                            attack_out, ground_examples, labels)
+
+        if successful_pert is None:
+            return
+
+        successful_pert = Variable(successful_pert)
+        successful_orig = Variable(successful_orig)
+        num_successful = successful_pert.shape[0]
+        xform = lambda im: im * 2.0 - 1.0
+        lpips_dist = self.dist_model.forward_var(xform(successful_pert),
+                                                 xform(successful_orig))
+        avg_lpips_dist = float(torch.mean(lpips_dist))
+
+        result.update(avg_lpips_dist, n=num_successful)
+
+
+class IdentityEvaluation(EvaluationResult):
+    """ Subclass of evaluation result that just computes top1 accuracy for the
+        ground truths (attack perturbation is the identity)
+    """
+    def __init__(self, classifier_net, normalizer, use_gpu=False):
+        self.classifier_net = classifier_net
+        self.normalizer = normalizer
+        self.use_gpu = use_gpu
+
+        self.results = {'top1': utils.AverageMeter()}
+
+    def set_gpu(self, use_gpu):
+        pass
+
+    def eval(self, examples, labels):
+        assert self.results.keys() == ['top1']
+        ground_avg = self.results['top1']
+        ground_output = self.classifier_net(self.normalizer(Variable(examples)))
+        minibatch = float(examples.shape[0])
+
+        ground_accuracy_int = utils.accuracy_int(ground_output,
+                                                Variable(labels), topk=1)
+        ground_avg.update(ground_accuracy_int / minibatch,
+                          n=int(minibatch))
+
+
+
+
 
 ############################################################################
 #                                                                          #
@@ -32,23 +204,23 @@ class AdversarialEvaluation(object):
     """ Wrapper for evaluation of NN's against adversarial examples
     """
 
-    def __init__(self, classifier_net, normalizer):
+    def __init__(self, classifier_net, normalizer, use_gpu=False):
         self.classifier_net = classifier_net
         self.normalizer = normalizer
+        self.use_gpu = use_gpu
 
 
-    def evaluate_ensemble(self, data_loader, attack_ensemble, use_gpu=False,
-                          verbosity='medium', num_minibatches=None):
+    def evaluate_ensemble(self, data_loader, attack_ensemble,
+                          verbose=True, num_minibatches=None):
         """ Runs evaluation against attacks generated by attack ensemble over
             the entire training set
         ARGS:
             data_loader : torch.utils.data.DataLoader - object that loads the
                           evaluation data
-            attack_ensemble : dict {string -> AdversarialAtttackParameters}
+            attack_ensemble : dict {string -> EvaluationResult}
                              is a dict of attacks that we want to make.
                              None of the strings can be 'ground'
-
-            use_gpu : bool - if True, we do things on the GPU
+            verbose : bool - if True, we print things
             num_minibatches: int - if not None, we only validate on a fixed
                                    number of minibatches
         RETURNS:
@@ -63,71 +235,52 @@ class AdversarialEvaluation(object):
         self.classifier_net.eval()
         assert isinstance(data_loader, torch.utils.data.DataLoader)
 
-        assert 'ground' not in attack_ensemble
-        validation_results = {k: utils.AverageMeter() for k in
-                              attack_ensemble.keys() + ['ground']}
 
-        utils.cuda_assert(use_gpu)
-        if use_gpu:
+        if attack_ensemble is None:
+            attack_ensemble = {}
+
+        assert 'ground' not in attack_ensemble
+        # Build ground result
+        ground_result = IdentityEvaluation(self.classifier_net,
+                                           self.normalizer,
+                                           use_gpu=self.use_gpu)
+        attack_ensemble['ground'] = ground_result
+
+        # Do GPU checks
+        utils.cuda_assert(self.use_gpu)
+        if self.use_gpu:
             self.classifier_net.cuda()
 
-        for attack_params in attack_ensemble.values():
-            attack_params.set_gpu(use_gpu)
+        for eval_result in attack_ensemble.values():
+            eval_result.set_gpu(self.use_gpu)
 
 
         ######################################################################
         #   Loop through validation set and attack efficacy                  #
         ######################################################################
-        
+
         for i, data in enumerate(data_loader, 0):
-            print "Starting minibatch %s..." % i
             if num_minibatches is not None and i >= num_minibatches:
                 break
+            print "Starting minibatch %s..." % i
+
 
             inputs, labels = data
-            if use_gpu:
+            if self.use_gpu:
                 inputs = inputs.cuda()
                 labels = labels.cuda()
 
-            var_inputs = Variable(inputs, requires_grad=True)
-            var_labels = Variable(labels, requires_grad=False)
+            for k, result in attack_ensemble.items():
+                if verbose:
+                    print "\t (mb: %s) evaluating %s..." % (i, k)
+                result.eval(inputs, labels)
 
-            minibatch = float(len(inputs))
+        return attack_ensemble
 
-            # Do ground classification
-            ground_output = self.classifier_net(self.normalizer(var_inputs))
-
-
-            ground_accuracy_int = utils.accuracy_int(ground_output, var_labels,
-                                                    topk=1)
-            ground_avg = validation_results['ground']
-            ground_avg.update(ground_accuracy_int / minibatch,
-                              n=int(minibatch))
-
-
-            # Loop through each attack in the ensemble
-            for attack_name, attack_params in attack_ensemble.iteritems():
-                print "\t (mb: %s) evaluating %s..." % (i, attack_name)
-
-                attack_out_tuple = attack_params.attack(var_inputs.data,
-                                                        var_labels.data)
-                attack_examples = Variable(attack_out_tuple[0])
-                pre_adv_labels = Variable(attack_out_tuple[1])
-
-                attack_accuracy_int = attack_params.eval_attack_only(
-                                                attack_examples,
-                                                pre_adv_labels, topk=1)
-
-                attack_avg = validation_results[attack_name]
-                attack_avg.update(attack_accuracy_int / minibatch,
-                                  n=int(minibatch))
-
-
-        return {k: meter.avg for k, meter in validation_results.iteritems()}
 
 
     def full_attack(self, data_loader, attack_parameters,
-                    output_filename, use_gpu=False, num_minibatches=None,
+                    output_filename, num_minibatches=None,
                     continue_attack=True, checkpoint_minibatch=10,
                     verbose=True, save_xform=img_utils.nhwc255_xform):
 
@@ -141,7 +294,6 @@ class AdversarialEvaluation(object):
                                 contain the attack
             output_filename : string - name of the file we want to output.
                               should just be the base name (extension is .npy)
-            use_gpu : boolean - if True we leverage the GPU, o.w. we don't
             num_minibatches : int - if not None, we only build attacks for this
                                     many minibatches of data
             continue_attack : bool - if True, we do the following :
@@ -160,7 +312,7 @@ class AdversarialEvaluation(object):
         RETURNS:
             numpy array of attacked examples
         """
-
+        raise NotImplementedError("BROKEN!!!")
         ######################################################################
         #   Setup and assert things                                          #
         ######################################################################
@@ -177,9 +329,9 @@ class AdversarialEvaluation(object):
         minibatch_digits = len(str(total_num_minibatches))
 
         # Do cuda stuff
-        utils.cuda_assert(use_gpu)
-        attack_parameters.set_gpu(use_gpu)
-        if use_gpu:
+        utils.cuda_assert(self.use_gpu)
+        attack_parameters.set_gpu(self.use_gpu)
+        if self.use_gpu:
             self.classifier_net.cuda()
 
         # Check attack is attacking everything
@@ -230,7 +382,7 @@ class AdversarialEvaluation(object):
 
             # Load data and build minibatch of attacked images
             inputs, labels = data
-            if use_gpu:
+            if self.use_gpu:
                 inputs = inputs.cuda()
                 labels = labels.cuda()
 
