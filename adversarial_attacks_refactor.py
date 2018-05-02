@@ -242,7 +242,7 @@ class PGD(AdversarialAttack):
                  use_gpu=False):
         super(PGD, self).__init__(classifier_net, normalizer, threat_model,
                                   use_gpu=use_gpu)
-        self.loss_fxn = loss_fxn # WE MINIMIZE THIS!!!
+        self.loss_fxn = loss_fxn # WE MAXIMIZE THIS!!!
 
     def attack(self, examples, labels, step_size=1.0/255.0,
                num_iterations=20, random_init=False, signed=True,
