@@ -100,7 +100,7 @@ class FullSpatial(ParameterizedTransformation):
             Forward then will just call grid sample using these params directly
         """
 
-        super(FullSpatial, self).__init__()
+        super(FullSpatial, self).__init__(**kwargs)
         img_shape = kwargs['shape']
         self.img_shape = img_shape
         self.xform_params = nn.Parameter(self.identity_params(img_shape))
@@ -122,7 +122,7 @@ class FullSpatial(ParameterizedTransformation):
         num_examples = shape[0]
         identity_affine_transform = torch.zeros(num_examples, 2, 3)
         if self.use_gpu:
-            identity_affine_transform.cuda()
+            identity_affine_transform = identity_affine_transform.cuda()
 
         identity_affine_transform[:,0,0] = 1
         identity_affine_transform[:,1,1] = 1
@@ -155,7 +155,8 @@ class FullSpatial(ParameterizedTransformation):
         """
         super(FullSpatial, self).merge_xform(other, self_mask)
 
-        new_xform = FullSpatial({'shape': self.img_shape})
+        new_xform = FullSpatial(shape=self.img_shape,
+                                use_gpu=self.use_gpu)
 
         new_params = utils.fold_mask(self.xform_params.data,
                                      other.xform_params.data, self_mask)
@@ -213,7 +214,7 @@ class AffineTransform(ParameterizedTransformation):
     """
 
     def __init__(self, *args, **kwargs):
-        super(AffineTransform, self).__init__()
+        super(AffineTransform, self).__init__(**kwargs)
         img_shape = kwargs['shape']
         self.img_shape = img_shape
         self.xform_params = nn.Parameter(self.identity_params(img_shape))
@@ -277,7 +278,7 @@ class RotationTransform(AffineTransform):
     """
 
     def __init__(self, *args, **kwargs):
-        super(RotationTransform, self).__init__(shape=kwargs['shape'])
+        super(RotationTransform, self).__init__(**kwargs)
         '''
         img_shape = kwargs['shape']
         self.img_shape = img_shape
@@ -289,7 +290,7 @@ class RotationTransform(AffineTransform):
         num_examples = shape[0]
         params = torch.zeros(num_examples)
         if self.use_gpu:
-            params.cuda()
+            params = params.cuda()
         return params
 
 
@@ -315,7 +316,7 @@ class TranslationTransform(AffineTransform):
     """
 
     def __init__(self, *args, **kwargs):
-        super(TranslationTransform, self).__init__(shape=kwargs['shape'])
+        super(TranslationTransform, self).__init__(**kwargs)
 
 
 

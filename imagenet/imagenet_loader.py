@@ -71,7 +71,7 @@ def normalizer_from_imagenet_model(model):
     else:
         std = DEFAULT_STDS
 
-    return utils.DifferentiableNormalizer(mean, std)
+    return utils.DifferentiableNormalize(mean, std)
 
 
 ###############################################################################
