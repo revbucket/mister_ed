@@ -208,7 +208,8 @@ class FGSM(AdversarialAttack):
         self.loss_fxn.setup_attack_batch(var_examples)
 
         # take gradients
-        loss = self.loss_fxn.forward(perturbation(var_examples), var_labels)
+        loss = self.loss_fxn.forward(perturbation(var_examples), var_labels,
+                                     perturbation=perturbation)
         torch.autograd.backward(loss)
 
 

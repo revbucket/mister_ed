@@ -394,7 +394,7 @@ class AdversarialTraining(object):
                     running_loss = 0.0
 
             # end_of_epoch
-            if epoch > 0 and epoch % verbosity_epoch == 0:
+            if epoch % verbosity_epoch == 0:
                 print "COMPLETED EPOCH %04d... checkpointing here" % epoch
                 checkpoints.save_state_dict(self.experiment_name,
                                             self.architecture_name,
