@@ -73,6 +73,7 @@ def load_cifar_classifiers():
     resnet_name = lambda flavor: 'cifar10_resnet%s.th' % flavor
     total_cifar_files = set([resnet_name(flavor) for flavor in
                              [1202, 110, 56, 44, 32, 20]])
+    total_cifar_files.add('Wide-Resnet28x10')
 
     try:
         os.makedirs(config.MODEL_PATH)

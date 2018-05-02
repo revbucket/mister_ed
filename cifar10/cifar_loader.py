@@ -65,8 +65,8 @@ def load_pretrained_cifar_resnet(flavor=32, use_gpu=False,
     classifier_net.load_state_dict(correct_state_dict)
 
     if return_normalizer:
-        normalizer = utils.DifferentiableNormalizer(mean=CIFAR10_MEANS,
-                                                    std=CIFAR10_STDS)
+        normalizer = utils.DifferentiableNormalize(mean=CIFAR10_MEANS,
+                                                   std=CIFAR10_STDS)
         return classifier_net, normalizer
 
     return classifier_net
@@ -83,8 +83,8 @@ def load_pretrained_cifar_wide_resnet(use_gpu=False, return_normalizer=False):
     classifier_net.load_state_dict(state_dict)
 
     if return_normalizer:
-        normalizer = utils.DifferentiableNormalizer(mean=WIDE_CIFAR10_MEANS,
-                                                    std=WIDE_CIFAR10_STDS)
+        normalizer = utils.DifferentiableNormalize(mean=WIDE_CIFAR10_MEANS,
+                                                   std=WIDE_CIFAR10_STDS)
         return classifier_net, normalizer
 
     return classifier_net
