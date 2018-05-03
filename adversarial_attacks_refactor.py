@@ -621,7 +621,7 @@ class CarliniWagner(AdversarialAttack):
 
 
             batch_dists = distance_fxn.forward(bin_search_perts).data
-
+            
             successful_dist_idxs = batch_dists < best_results['best_dist']
             successful_dist_idxs = successful_dist_idxs
 
@@ -629,6 +629,7 @@ class CarliniWagner(AdversarialAttack):
             successful_mask = successful_attack_idxs * successful_dist_idxs
 
             # And then generate a new 'best distance' and 'best perturbation'
+
             best_results['best_dist'] = utils.fold_mask(batch_dists,
                                                       best_results['best_dist'],
                                                       successful_mask)

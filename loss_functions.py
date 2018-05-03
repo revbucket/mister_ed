@@ -304,8 +304,9 @@ class SoftLInfRegularization(ReferenceRegularizer):
         '''
         delta_minus_taus = torch.clamp(torch.abs(examples - self.fix_im) - tau,
                                        min=0.0)
+        batchwise = utils.batchwise_norm(delta_minus_taus, 'inf', dim=0)
+        return batchwise.squeeze()
 
-        return torch.sum(delta_minus_taus)
 
 
 #############################################################################
