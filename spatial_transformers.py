@@ -129,14 +129,62 @@ class FullSpatial(ParameterizedTransformation):
 
         return F.affine_grid(identity_affine_transform, shape).data
 
+
+    def _stAdv_norm(self):
+        """ Computes the norm used in
+           "Spatially Transformed Adversarial Examples"
+        """
+
+        # ONLY WORKS FOR SQUARE MATRICES
+        height, width = tuple(self.xform_params.shape[1:3])
+        assert height == width
+        ######################################################################
+        #   Build permutation matrices                                       #
+        ######################################################################
+
+        def id_builder():
+            x = torch.zeros(height, width)
+            for i in xrange(height):
+                x[i,i] = 1
+            return x
+
+        col_permuts = []
+        for col in ['left', 'right']:
+            col_val = {'left': -1, 'right': 1}[col]
+            idx = ((torch.arange(width) + col_val) % width).type(torch.LongTensor)
+            col_permut = torch.zeros(height, width).index_copy_(1, idx,
+                                                                id_builder())
+
+            if col == 'left':
+                pass
+                #col_permut[0][0] = 1
+                #col_permut[0][-1] = 0
+            else:
+                col_permut[-1][-1] = 1
+                col_permut[0][-1] = 0
+
+            col_permuts.append(col_permut)
+
+        return col_permuts
+
+
+
+
+
+
     def norm(self, lp='inf'):
         """ Returns the 'norm' of this transformation in terms of an LP norm on
             the parameters, summed across each transformation per minibatch
         ARGS:
             lp : int or 'inf' - which lp type norm we use
         """
-        identity_params = Variable(self.identity_params(self.img_shape))
-        return utils.summed_lp_norm(self.xform_params - identity_params, lp)
+
+        if isinstance(lp, int) or lp == 'inf':
+            identity_params = Variable(self.identity_params(self.img_shape))
+            return utils.summed_lp_norm(self.xform_params - identity_params, lp)
+        else:
+            assert lp == 'stAdv'
+            return self._stAdv_norm()
 
 
     def clip_params(self):

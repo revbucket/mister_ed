@@ -50,10 +50,10 @@ class AdversarialPerturbation(nn.Module):
         self.threat_model = threat_model
         self.initialized = False
         self.perturbation_params = perturbation_params
-        
+
         if isinstance(perturbation_params, tuple):
             self.use_gpu = perturbation_params[1].use_gpu or False
-        else:        
+        else:
             self.use_gpu = perturbation_params.use_gpu or False
         # Stores parameters of the adversarial perturbation and hyperparams
         # to compute total perturbation norm here
@@ -544,6 +544,7 @@ class SequentialPerturbation(AdversarialPerturbation):
 
         # norm: pipeline -> Scalar Variable
         self.norm = global_parameters.norm
+        self.norm_weights = global_parameters.norm_weights
 
         # padding with black is useful to not throw information away during
         # sequential steps
@@ -570,18 +571,20 @@ class SequentialPerturbation(AdversarialPerturbation):
     def perturbation_norm(self, x=None, lp_style=None):
         # Need to define a nice way to describe the norm here. This can be
         # an empirical norm between input/output
-
-
         # For now, let's just say it's the sum of the norms of each constituent
         if self.norm is not None:
             return self.norm(self.pipeline, x=x, lp_style=lp_style)
         else:
+            norm_weights = self.norm_weights or\
+                              [1.0 for _ in xrange(len(self.pipeline))]
             out = None
-            for layer in self.pipeline:
+            for i, layer in enumerate(self.pipeline):
+                weight = norm_weights[i]
+                layer_norm = layer.perturbation_norm(x=x, lp_style=lp_style)
                 if out is None:
-                    out = layer.perturbation_norm(x=x, lp_style=lp_style)
+                    out = layer_norm * weight
                 else:
-                    out = out + layer.perturbation_norm(x=x, lp_style=lp_style)
+                    out = out + layer_norm * weight
             return out
 
     @initialized
