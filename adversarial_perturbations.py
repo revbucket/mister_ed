@@ -420,6 +420,7 @@ class ParameterizedXformAdv(AdversarialPerturbation):
 
         self.lp_style = perturbation_params.lp_style
         self.lp_bound = perturbation_params.lp_bound
+        self.use_stadv = perturbation_params.use_stadv
         self.scalar_step = perturbation_params.scalar_step or 1.0
 
 
@@ -439,13 +440,19 @@ class ParameterizedXformAdv(AdversarialPerturbation):
     @initialized
     def perturbation_norm(self, x=None, lp_style=None):
         lp_style = lp_style or self.lp_style
-        return self.xform.norm(lp=lp_style)
+        if self.use_stadv is not None:
+            assert isinstance(self.xform, st.FullSpatial)
+            return self.xform.stAdv_norm()
+        else:
+            return self.xform.norm(lp=lp_style)
 
     @initialized
     def constrain_params(self, x=None):
         # Do lp projections
         if isinstance(self.lp_style, int) or self.lp_style == 'inf':
             self.xform.project_params(self.lp_style, self.lp_bound)
+
+
 
     @initialized
     def update_params(self, step_fxn):

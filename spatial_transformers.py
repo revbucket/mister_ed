@@ -130,12 +130,13 @@ class FullSpatial(ParameterizedTransformation):
         return F.affine_grid(identity_affine_transform, shape).data
 
 
-    def _stAdv_norm(self):
+    def stAdv_norm(self):
         """ Computes the norm used in
            "Spatially Transformed Adversarial Examples"
         """
 
         # ONLY WORKS FOR SQUARE MATRICES
+        dtype = self.xform_params.data.type()
         height, width = tuple(self.xform_params.shape[1:3])
         assert height == width
         ######################################################################
@@ -143,33 +144,57 @@ class FullSpatial(ParameterizedTransformation):
         ######################################################################
 
         def id_builder():
-            x = torch.zeros(height, width)
+            x = torch.zeros(height, width).type(dtype)
             for i in xrange(height):
                 x[i,i] = 1
             return x
 
         col_permuts = []
+        row_permuts = []
+        # torch.matmul(foo, col_permut)
         for col in ['left', 'right']:
             col_val = {'left': -1, 'right': 1}[col]
-            idx = ((torch.arange(width) + col_val) % width).type(torch.LongTensor)
+            idx = ((torch.arange(width) - col_val) % width)
+            idx = idx.type(torch.LongTensor)
             col_permut = torch.zeros(height, width).index_copy_(1, idx,
                                                                 id_builder())
+            col_permut = col_permut.type(dtype)
 
             if col == 'left':
-                pass
-                #col_permut[0][0] = 1
-                #col_permut[0][-1] = 0
+                col_permut[-1][0] = 0
+                col_permut[0][0] = 1
             else:
-                col_permut[-1][-1] = 1
                 col_permut[0][-1] = 0
-
+                col_permut[-1][-1] = 1
+            col_permut = Variable(col_permut)
             col_permuts.append(col_permut)
+            row_permuts.append(col_permut.transpose(0, 1))
 
-        return col_permuts
+        ######################################################################
+        #   Build delta_u, delta_v grids                                     #
+        ######################################################################
+        id_params = Variable(self.identity_params(self.img_shape))
+        delta_grids = self.xform_params - id_params
+        delta_grids = delta_grids.permute(0, 3, 1, 2)
 
+        ######################################################################
+        #   Compute the norm                                                 #
+        ######################################################################
+        output = Variable(torch.zeros(1).type(dtype))
 
+        for row_or_col, permutes in zip(['row', 'col'],
+                                        [row_permuts, col_permuts]):
+            for permute in permutes:
+                if row_or_col == 'row':
+                    temp = delta_grids - torch.matmul(permute, delta_grids)
+                else:
+                    temp = delta_grids - torch.matmul(delta_grids, permute)
+                temp = temp.pow(2)
+                temp = temp.sum(1)
+                temp = (temp + 1e-10).pow(0.5)
 
-
+                output.add_(temp.sum())
+        return output
 
 
     def norm(self, lp='inf'):

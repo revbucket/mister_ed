@@ -167,6 +167,7 @@ class EvaluationResult(object):
         result.update(avg_lpips_dist, n=num_successful)
 
 
+
 class IdentityEvaluation(EvaluationResult):
     """ Subclass of evaluation result that just computes top1 accuracy for the
         ground truths (attack perturbation is the identity)
