@@ -77,6 +77,8 @@ class EvaluationResult(object):
         if labels.is_cuda:
             mask = mask.cuda()
         mask[attack_out[2]] = 1
+        mask = mask.view(-1, *([1] * img_dim))
+
         selected_grounds = ground_examples.masked_select(mask).view(*img_shape)
 
         # --- next classify these inputs
@@ -151,7 +153,7 @@ class EvaluationResult(object):
         successful_pert, successful_orig = self._get_successful_attacks(
                                             attack_out, ground_examples, labels)
 
-        if successful_pert is None:
+        if successful_pert is None or successful_pert.shape == torch.Size([]):
             return
 
         successful_pert = Variable(successful_pert)
