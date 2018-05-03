@@ -374,15 +374,17 @@ class TranslationTransform(AffineTransform):
         num_examples = shape[0]
         params = torch.zeros(num_examples, 2) # x and y translation only
         if self.use_gpu:
-            params.cuda()
+            params = params.cuda()
         return params
 
     def make_grid(self, x):
         assert isinstance(x, Variable)
-
         ones = Variable(torch.ones(self.xform_params.shape[0]))
         zeros = Variable(torch.zeros(self.xform_params.shape[0]))
-
+        if self.xform_params.cuda:
+            ones = ones.cuda()
+            zeros = zeros.cuda()
+        
         affine_xform = torch.stack([ones, zeros, self.xform_params[:,0],
                                     zeros, ones, self.xform_params[:,1]])
 
