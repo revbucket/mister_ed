@@ -154,10 +154,13 @@ class FullSpatial(ParameterizedTransformation):
         # torch.matmul(foo, col_permut)
         for col in ['left', 'right']:
             col_val = {'left': -1, 'right': 1}[col]
-            idx = ((torch.arange(width) - col_val) % width)
-            idx = idx.type(torch.LongTensor)
-            col_permut = torch.zeros(height, width).index_copy_(1, idx,
-                                                                id_builder())
+            idx = ((torch.arange(width) - col_val) % width)            
+            idx = idx.type(dtype).type(torch.LongTensor)
+            if self.xform_params.is_cuda:
+                idx = idx.cuda()
+                
+            col_permut = torch.zeros(height, width).index_copy_(1, idx.cpu(),
+                                                                id_builder().cpu())
             col_permut = col_permut.type(dtype)
 
             if col == 'left':
