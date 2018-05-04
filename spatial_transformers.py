@@ -276,7 +276,6 @@ class FullSpatial(ParameterizedTransformation):
 
 
 
-
 ###############################################################################
 #                                                                             #
 #                  AFFINE TRANSFORMATION NETWORK                              #
@@ -299,8 +298,7 @@ class AffineTransform(ParameterizedTransformation):
         identity_params = Variable(self.identity_params(self.img_shape))
         return utils.summed_lp_norm(self.xform_params - identity_params, lp)
 
-    @classmethod
-    def identity_params(cls, shape):
+    def identity_params(self, shape):
         """ Returns parameters for identity affine transformation
         ARGS:
             shape: torch.Size - shape of the minibatch of images we'll be
@@ -314,7 +312,7 @@ class AffineTransform(ParameterizedTransformation):
         num_examples = shape[0]
         identity_affine_transform = torch.zeros(num_examples, 2, 3)
         if self.use_gpu:
-            identity_affine_transform.cuda()
+            identity_affine_transform = identity_affine_transform.cuda()
 
         identity_affine_transform[:,0,0] = 1
         identity_affine_transform[:,1,1] = 1
@@ -409,7 +407,7 @@ class TranslationTransform(AffineTransform):
         if self.xform_params.cuda:
             ones = ones.cuda()
             zeros = zeros.cuda()
-        
+
         affine_xform = torch.stack([ones, zeros, self.xform_params[:,0],
                                     zeros, ones, self.xform_params[:,1]])
 
@@ -422,7 +420,72 @@ class TranslationTransform(AffineTransform):
 
 
 
+##############################################################################
+#                                                                            #
+#                           BARREL + PINCUSHION TRANSFORMATIONS              #
+#                                                                            #
+##############################################################################
 
+class PointScaleTransform(ParameterizedTransformation):
+    """ Point Scale transformations are pincushion/barrel distortions.
+        We pick a point to anchor the image and optimize a distortion size to
+        either dilate or contract
+    """
+
+    def __init__(self, *args, **kwargs):
+        super(PointScaleTransform, self).__init__(**kwargs)
+        img_shape = kwargs['shape']
+        self.img_shape = img_shape
+        self.xform_params = nn.Parameter(self.identity_params(img_shape))
+
+
+    def norm(self, lp='inf'):
+        pass
+
+
+    def identity_params(self, shape):
+        num_examples = shape[0]
+        identity_param = torch.zeros(num_examples)
+        if self.use_gpu:
+            identity_param = identity_param.cuda()
+
+        return identity_param
+
+
+    def make_grid(self):
+
+        ######################################################################
+        #   Compute identity flow grid first                                 #
+        ######################################################################
+
+        num_examples = self.img_shape[0]
+        identity_affine_transform = torch.zeros(num_examples, 2, 3)
+        if self.use_gpu:
+            identity_affine_transform = identity_affine_transform.cuda()
+
+        identity_affine_transform[:,0,0] = 1
+        identity_affine_transform[:,1,1] = 1
+
+        basic_grid = F.affine_grid(identity_affine_transform, self.img_shape)
+
+        ######################################################################
+        #   Compute scaling based on parameters                              #
+        ######################################################################
+
+        radii_squared = basic_grid.pow(2).sum(-1)
+
+        new_radii = (radii_squared + 1e-20).pow(0.5) *\
+                    (1 + self.xform_params.view(-1, 1, 1) * radii_squared)
+        thetas = torch.atan2(basic_grid[:,:,:,1], (basic_grid[:,:,:, 0]))
+        cosines = torch.cos(thetas) * new_radii
+        sines = torch.sin(thetas) * new_radii
+
+        return torch.stack([cosines, sines], -1)
+
+
+
+    def forward(self, x):
+        return F.grid_sample(x, self.make_grid())
 
 
 
