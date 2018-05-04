@@ -32,7 +32,8 @@ DEFAULT_STDS         = config.IMAGENET_STDS
 #                                                                            #
 ##############################################################################
 
-def load_pretrained_imagenet(arch='nasnetalarge', use_gpu=False):
+def load_pretrained_imagenet(arch='nasnetalarge', use_gpu=False,
+                             return_normalizer=False):
 
     assert arch in ['fbresnet152', 'bninception', 'resnext101_32x4d',
                       'resnext101_64x4d', 'inceptionv4', 'inceptionresnetv2',
@@ -51,7 +52,10 @@ def load_pretrained_imagenet(arch='nasnetalarge', use_gpu=False):
     model.eval()
     if use_gpu:
         model.cuda()
-    return model
+
+    if return_normalizer:
+      normalizer = normalizer_from_imagenet_model(model)
+      return model, normalizer
 
 
 def normalizer_from_imagenet_model(model):

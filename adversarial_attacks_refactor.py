@@ -621,7 +621,7 @@ class CarliniWagner(AdversarialAttack):
 
 
             batch_dists = distance_fxn.forward(bin_search_perts).data
-            
+
             successful_dist_idxs = batch_dists < best_results['best_dist']
             successful_dist_idxs = successful_dist_idxs
 
