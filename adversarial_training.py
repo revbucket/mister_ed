@@ -5,6 +5,7 @@ import torchvision
 import torch.cuda as cuda
 import torch.optim as optim
 import torchvision.transforms as transforms
+import torch.nn as nn
 
 from torch.autograd import Variable
 
@@ -66,10 +67,11 @@ class AdversarialAttackParameters(object):
             adversarial, and the corresponding NONADVERSARIAL LABELS
 
             output is a tuple with three tensors:
-             (adv_examples, pre_adv_labels, selected_idxs )
+             (adv_examples, pre_adv_labels, selected_idxs, coupled )
              adv_examples: Tensor with shape (N'xCxHxW) [the perturbed outputs]
              pre_adv_labels: Tensor with shape (N') [original labels]
              selected_idxs : Tensor with shape (N') [idxs selected]
+             adv_inputs : Tensor with shape (N') [examples used to make advs]
         """
         num_elements = inputs.shape[0]
 
@@ -83,15 +85,15 @@ class AdversarialAttackParameters(object):
         if selected_idxs.numel() == 0:
             return (None, None, None)
 
-        adv_inputs = inputs.index_select(0, selected_idxs)
+        adv_inputs = Variable(inputs.index_select(0, selected_idxs))
         pre_adv_labels = labels.index_select(0, selected_idxs)
 
-        perturbation = self.adv_attack_obj.attack(adv_inputs, pre_adv_labels,
+        perturbation = self.adv_attack_obj.attack(adv_inputs.data,
+                                                  pre_adv_labels,
                                                   **self.attack_kwargs)
-        adv_examples = perturbation(Variable(adv_inputs)).data
+        adv_examples = perturbation(adv_inputs)
 
-
-        return (adv_examples, pre_adv_labels, selected_idxs)
+        return (adv_examples, pre_adv_labels, selected_idxs, adv_inputs)
 
 
     def eval(self, ground_inputs, adv_inputs, labels, idxs, topk=1):
@@ -244,9 +246,13 @@ class AdversarialTraining(object):
                         if not None, we save the adversarial images for later
                         use, else we don't save them.
         RETURNS:
-            inputs, labels (but with augmentation in N b/c we built adversarial
-                            examples)
-
+            (inputs, labels, adv_inputs, coupled_inputs)
+            where inputs = <arg inputs> ++ adv_inputs
+                  labels is original labels
+                  adv_inputs is the (Variable) adversarial examples generated,
+                  coupled_inputs is the (Variable) inputs used to generate the
+                                 adversarial examples (useful for when we don't
+                                 augment 1:1).
         """
         if attack_parameters is None:
             return inputs, labels
@@ -254,10 +260,10 @@ class AdversarialTraining(object):
 
         assert isinstance(attack_parameters, list)
 
-        adv_inputs_total, adv_labels_total = [], []
+        adv_inputs_total, adv_labels_total, coupled_inputs = [], [], []
         for param in attack_parameters:
             adv_data = param.attack(inputs, labels)
-            adv_inputs, adv_labels, adv_idxs = adv_data
+            adv_inputs, adv_labels, adv_idxs, og_adv_inputs = adv_data
 
             if (self.verbosity_level >= 1 and
                 minibatch_num % self.verbosity_adv == self.verbosity_adv - 1):
@@ -270,15 +276,18 @@ class AdversarialTraining(object):
 
             adv_inputs_total.append(adv_inputs)
             adv_labels_total.append(adv_labels)
+            coupled_inputs.append(og_adv_inputs)
 
-        inputs = torch.cat([inputs]+ adv_inputs_total, dim=0)
+        inputs = torch.cat([inputs]+ [_.data for _ in adv_inputs_total], dim=0)
         labels = torch.cat([labels] + adv_labels_total, dim=0)
-        return inputs, labels
+        coupled = torch.cat(coupled_inputs, dim=0)
+        return inputs, labels, torch.cat(adv_inputs_total, dim=0), coupled
 
 
     def train(self, data_loader, num_epochs, train_loss,
               optimizer=None, attack_parameters=None, use_gpu=False,
-              verbosity='medium', starting_epoch=0, adversarial_save_dir=None):
+              verbosity='medium', starting_epoch=0, adversarial_save_dir=None,
+              regularize_adv_scale=None):
         """ Modifies the NN weights of self.classifier_net by training with
             the specified parameters s
         ARGS:
@@ -305,6 +314,10 @@ class AdversarialTraining(object):
             adversarial_save_dir: string or None - if not None is the name of
                                   the directory we save adversarial images to.
                                   If None, we don't save adversarial images
+            regularize_adv_scale : float > 0 or None - if not None we do L1 loss
+                                   between the logits of the adv examples and
+                                   the inputs used to generate them. This is the
+                                   scale constant of that loss
         RETURNS:
             None, but modifies the classifier_net's weights
         """
@@ -351,6 +364,10 @@ class AdversarialTraining(object):
         optimizer = optimizer or optim.Adam(self.classifier_net.parameters(),
                                             lr=0.001)
 
+        # setup regularize adv object
+        if regularize_adv_scale is not None:
+            regularize_adv_criterion = nn.L1Loss()
+
         ######################################################################
         #   Training loop                                                    #
         ######################################################################
@@ -365,12 +382,11 @@ class AdversarialTraining(object):
 
 
                 # Build adversarial examples
-                inputs, labels = self._attack_subroutine(attack_parameters,
-                                                         inputs, labels,
-                                                         epoch, i,
-                                                         adv_saver)
-
-
+                attack_out = self._attack_subroutine(attack_parameters,
+                                                     inputs, labels,
+                                                     epoch, i,
+                                                     adv_saver)
+                inputs, labels, adv_examples, adv_inputs = attack_out
                 # Now proceed with standard training
                 self.normalizer.differentiable_call()
                 self.classifier_net.train()
@@ -380,6 +396,13 @@ class AdversarialTraining(object):
                 # forward step
                 outputs = self.classifier_net.forward(self.normalizer(inputs))
                 loss = train_loss.forward(outputs, labels)
+
+                if regularize_adv_scale is not None:
+                    # BE SURE TO 'DETACH' THE ADV_INPUTS!!!
+                    reg_adv_loss = regularize_adv_criterion(adv_examples,
+                                                      Variable(adv_inputs.data))
+                    loss = loss + regularize_adv_scale * reg_adv_loss
+
 
                 # backward step
                 loss.backward()
