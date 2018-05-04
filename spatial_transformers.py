@@ -439,9 +439,28 @@ class PointScaleTransform(ParameterizedTransformation):
         self.xform_params = nn.Parameter(self.identity_params(img_shape))
 
 
-    def norm(self, lp='inf'):
-        pass
 
+    def norm(self, lp='inf'):
+        return utils.summed_lp_norm(self.xform_params, lp)
+
+
+    def project_params(self, lp, lp_bound):
+        """ Projects the params to be within lp_bound (according to an lp)
+            of the identity map. First thing we do is clip the params to be
+            valid, too
+        ARGS:
+            lp : int or 'inf' - which LP norm we use. Must be an int or the
+                 string 'inf'
+            lp_bound : float - how far we're allowed to go in LP land
+        RETURNS:
+            None, but modifies self.xform_params
+        """
+
+        assert isinstance(lp, int) or lp == 'inf'
+
+        diff = self.xform_params.data
+        new_diff = utils.batchwise_lp_project(diff, lp, lp_bound)
+        self.xform_params.data.add_(new_diff - diff)
 
     def identity_params(self, shape):
         num_examples = shape[0]
