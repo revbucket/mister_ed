@@ -56,6 +56,7 @@ def load_pretrained_imagenet(arch='nasnetalarge', use_gpu=False,
     if return_normalizer:
       normalizer = normalizer_from_imagenet_model(model)
       return model, normalizer
+    return model
 
 
 def normalizer_from_imagenet_model(model):

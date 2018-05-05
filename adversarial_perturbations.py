@@ -239,6 +239,34 @@ class AdversarialPerturbation(nn.Module):
         assert self.perturbation_params == other.perturbation_params
         assert other.initialized
 
+    @initialized
+    def collect_successful(self, classifier_net, normalizer):
+        """ Returns a list of [adversarials, originals] of the SUCCESSFUL
+            attacks only, according to the given classifier_net, normalizer
+            SUCCESSFUL here means that the adversarial is different
+        ARGS:
+            TODO: fill in when I'm not in crunchtime
+        """
+
+        assert self.orginals is not None
+        adversarials = Variable(self.adversarial_tensors())
+        originals = Variable(self.originals)
+
+        adv_out = torch.max(classifier_net(normalizer(adversarials)), 1)
+        out = torch.max(classifier_net(normalizer(originals)), 1)
+
+        adv_idx_bytes = adv_out != out
+        idxs = []
+        for idx, el in enumerate(adv_idx_bytes):
+            if float(el) > 0:
+                idxs.append(idx)
+
+        idxs = torch.LongTensor(idxs)
+        if self.originals.is_cuda:
+            idxs = idxs.cuda()
+
+        return [torch.index_select(self.adversarial_tensors(), 0, idxs),
+                torch.index_select(self.originals, 0, idxs)]
 
 class PerturbationParameters(dict):
     """ Object that stores parameters like a dictionary.
