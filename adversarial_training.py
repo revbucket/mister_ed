@@ -401,6 +401,7 @@ class AdversarialTraining(object):
                     # BE SURE TO 'DETACH' THE ADV_INPUTS!!!
                     reg_adv_loss = regularize_adv_criterion(adv_examples,
                                                       Variable(adv_inputs.data))
+                    print float(loss), regularize_adv_scale * float(reg_adv_loss)
                     loss = loss + regularize_adv_scale * reg_adv_loss
 
 

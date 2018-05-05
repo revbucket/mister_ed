@@ -58,7 +58,6 @@ def load_pretrained_imagenet(arch='nasnetalarge', use_gpu=False,
       return model, normalizer
     return model
 
-
 def normalizer_from_imagenet_model(model):
     """ Imagenet models taken from the git repo are not normalized and have
         different normalization means/stds. This builds a
