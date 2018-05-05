@@ -97,7 +97,7 @@ class EvaluationResult(object):
 
         # --- now select only the successful attacks
         succ_atk_bcast = successful_attacks.view(-1, *([1] * img_dim))
-        successful_pert = attack_out[0].masked_select(succ_atk_bcast)\
+        successful_pert = attack_out[0].data.masked_select(succ_atk_bcast)\
                                        .view(*img_shape)
         successful_orig = selected_grounds.masked_select(succ_atk_bcast)\
                                           .view(*img_shape)
@@ -120,8 +120,8 @@ class EvaluationResult(object):
         ######################################################################
         #  Computes the top 1 accuracy and updates the averageMeter          #
         ######################################################################
-        attack_examples = Variable(attack_out[0])
-        pre_adv_labels = Variable(attack_out[1])
+        attack_examples = utils.safe_var(attack_out[0])
+        pre_adv_labels = utils.safe_var(attack_out[1])
         num_examples = float(attack_examples.shape[0])
 
         attack_accuracy_int = self.attack_params.eval_attack_only(

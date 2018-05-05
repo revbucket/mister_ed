@@ -4,6 +4,7 @@
 import utils.pytorch_utils as utils
 import torch
 import numpy as np
+import scipy.misc
 import matplotlib.pyplot as plt
 import torchvision.transforms as transforms
 import random
@@ -35,7 +36,7 @@ def nhwc255_xform(img_np_array):
 
 def show_images(images, normalize=None, ipython=True,
                 margin_height=2, margin_color='red',
-                figsize=(18,16)):
+                figsize=(18,16), save_npy=None):
     """ Shows pytorch tensors/variables as images """
 
 
@@ -67,6 +68,11 @@ def show_images(images, normalize=None, ipython=True,
     rows = [_ for _ in rows[1:] if _ is not None]
     plt.figure(figsize=figsize, dpi=80, facecolor='w', edgecolor='k')    
     plt.imshow(np.concatenate(rows, 1).transpose(1, 2, 0))
+    if save_npy is not None:
+
+        scipy.misc.toimage(np.concatenate(rows, 1).transpose(1, 2, 0),
+                           cmin=0.0, cmax=1.0).save(save_npy)
+        
 
     plt.show()
 
