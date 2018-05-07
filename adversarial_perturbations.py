@@ -248,13 +248,12 @@ class AdversarialPerturbation(nn.Module):
             TODO: fill in when I'm not in crunchtime
         """
 
-        assert self.orginals is not None
+        assert self.originals is not None
         adversarials = Variable(self.adversarial_tensors())
         originals = Variable(self.originals)
 
-        adv_out = torch.max(classifier_net(normalizer(adversarials)), 1)
-        out = torch.max(classifier_net(normalizer(originals)), 1)
-
+        adv_out = torch.max(classifier_net(normalizer(adversarials)), 1)[1]
+        out = torch.max(classifier_net(normalizer(originals)), 1)[1]
         adv_idx_bytes = adv_out != out
         idxs = []
         for idx, el in enumerate(adv_idx_bytes):
