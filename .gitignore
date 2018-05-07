@@ -11,6 +11,9 @@ output_images/*
 !output_images/ # pretrained models shouldn't live on github
 output_images/*
 
+!scripts/ # only certain scripts should live on github
+scripts/*
+
 #notebooks should be ignored except for a few basic ones
 notebooks/*
 !notebooks/main_sandbox.ipynb

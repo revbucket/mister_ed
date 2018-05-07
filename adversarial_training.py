@@ -318,6 +318,9 @@ class AdversarialTraining(object):
                                    between the logits of the adv examples and
                                    the inputs used to generate them. This is the
                                    scale constant of that loss
+            stdout_prints: bool - if True we print out using stdout so we don't
+                                  spam logs like crazy
+
         RETURNS:
             None, but modifies the classifier_net's weights
         """
