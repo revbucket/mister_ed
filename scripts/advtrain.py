@@ -60,7 +60,7 @@ def validate_filenaming(experiment_name):
 #                                                                            #
 ##############################################################################
 
-GLOBAL_ATK_KWARGS = {'num_iterations': 50,
+GLOBAL_ATK_KWARGS = {'num_iterations': 100,
                      'optimizer': optim.Adam,
                      'optimizer_kwargs': {'lr': 0.01},
                      'signed': False,
