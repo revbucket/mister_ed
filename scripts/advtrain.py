@@ -64,7 +64,7 @@ GLOBAL_ATK_KWARGS = {'num_iterations': 50,
                      'optimizer': optim.Adam,
                      'optimizer_kwargs': {'lr': 0.01},
                      'signed': False,
-                     'verbose': True}
+                     'verbose': False}
 L_INF_BOUND = 8.0 / 255.0
 FLOW_LINF_BOUND = 0.05
 
@@ -74,6 +74,19 @@ FLOW_LINF_BOUND = 0.05
 #             FGSM ONLY                                                      #
 ##############################################################################
 
+
+def build_fgsm_attack(classifier_net, normalizer, use_gpu):
+    delta_threat = ap.ThreatModel(ap.DeltaAddition,
+                                  ap.PerturbationParameters(lp_style='inf',
+                                                            lp_bound=L_INF_BOUND,
+                                                            use_gpu=use_gpu))
+    attack_loss = plf.VanillaXentropy(classifier_net, normalizer)
+    fgsm_attack = aar.FGSM(classifier_net, cifar_normer, delta_threat,
+                           attack_loss, use_gpu=use_gpu)
+    attack_kwargs = {'verbose': GLOBAL_ATK_KWARGS['verbose']}
+    params = advtrain.AdversarialAttackParameters(fgsm_attack, 1.0,
+                                       attack_specific_params={'attack_kwargs': attack_kwargs})
+    return params
 
 # STANDARD PGD LINF ATTACK
 def build_pgd_linf_attack(classifier_net, normalizer, use_gpu):
