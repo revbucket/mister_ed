@@ -108,17 +108,17 @@ def build_pgd_linf_stadv_attack(classifier_net, normalizer, use_gpu):
     delta_threat = ap.ThreatModel(ap.DeltaAddition,
                                   ap.PerturbationParameters(lp_style='inf',
                                                             lp_bound=L_INF_BOUND,
-                                                            use_gpu=USE_GPU))
+                                                            use_gpu=use_gpu))
     flow_threat = ap.ThreatModel(ap.ParameterizedXformAdv,
                                  ap.PerturbationParameters(lp_style='inf',
-                                                           lp_bound=FLOW_LINF,
+                                                           lp_bound=FLOW_LINF_BOUND,
                                                            xform_class=st.FullSpatial,
-                                                           use_gpu=USE_GPU,
+                                                           use_gpu=use_gpu,
                                                            use_stadv=True))
     sequence_threat = ap.ThreatModel(ap.SequentialPerturbation,
                                  [delta_threat, flow_threat],
                                 ap.PerturbationParameters(norm_weights=[0.00, 1.00]))
-    adv_loss = lf.CWLossF6(classifier_net, cifar_normer)
+    adv_loss = lf.CWLossF6(classifier_net, normalizer)
     st_loss = lf.PerturbationNormLoss(lp=2)
 
     loss_fxn = lf.RegularizedLoss({'adv': adv_loss, 'st':st_loss},
