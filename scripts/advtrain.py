@@ -70,6 +70,12 @@ FLOW_LINF_BOUND = 0.05
 
 
 
+##############################################################################
+#             FGSM ONLY                                                      #
+##############################################################################
+
+
+# STANDARD PGD LINF ATTACK
 def build_pgd_linf_attack(classifier_net, normalizer, use_gpu):
     # PREBUILT LOSS FUNCTION
     delta_threat = ap.ThreatModel(ap.DeltaAddition,
@@ -84,6 +90,38 @@ def build_pgd_linf_attack(classifier_net, normalizer, use_gpu):
     return params
 
 
+# LINF + STADV
+def build_pgd_linf_stadv_attack(classifier_net, normalizer, use_gpu):
+    delta_threat = ap.ThreatModel(ap.DeltaAddition,
+                                  ap.PerturbationParameters(lp_style='inf',
+                                                            lp_bound=L_INF_BOUND,
+                                                            use_gpu=USE_GPU))
+    flow_threat = ap.ThreatModel(ap.ParameterizedXformAdv,
+                                 ap.PerturbationParameters(lp_style='inf',
+                                                           lp_bound=FLOW_LINF,
+                                                           xform_class=st.FullSpatial,
+                                                           use_gpu=USE_GPU,
+                                                           use_stadv=True))
+    sequence_threat = ap.ThreatModel(ap.SequentialPerturbation,
+                                 [delta_threat, flow_threat],
+                                ap.PerturbationParameters(norm_weights=[0.00, 1.00]))
+    adv_loss = lf.CWLossF6(classifier_net, cifar_normer)
+    st_loss = lf.PerturbationNormLoss(lp=2)
+
+    loss_fxn = lf.RegularizedLoss({'adv': adv_loss, 'st':st_loss},
+                                  {'adv': 1.0, 'st': 0.05},
+                                  negate=True)
+    pgd_kwargs = copy.deepcopy(GLOBAL_ATK_KWARGS)
+    pgd_kwargs['optimizer_kwargs']['lr'] = 0.001
+
+    pgd_attack = aar.PGD(classifier_net, normalizer, sequence_threat, loss_fxn)
+    params = advtrain.AdversarialAttackParameters(pgd_attack, 1.0,
+                            attack_specific_params={'attack_kwargs': pgd_kwargs})
+    return params
+
+
+
+# STADV ATTACK
 def build_stadv_linf_attack(classifier_net, normalizer, use_gpu):
     flow_threat = ap.ThreatModel(ap.ParameterizedXformAdv,
                                  ap.PerturbationParameters(lp_style='inf',
@@ -110,7 +148,6 @@ def build_stadv_linf_attack(classifier_net, normalizer, use_gpu):
 
 def build_attack_params(classifier_net, normalizer, use_gpu):
     return build_pgd_linf_attack(classifier_net, normalizer, use_gpu)
-
 
 
 ##############################################################################
