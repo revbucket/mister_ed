@@ -426,7 +426,7 @@ class AdversarialTraining(object):
                 checkpoints.save_state_dict(self.experiment_name,
                                             self.architecture_name,
                                             epoch, self.classifier_net,
-                                            k_highest=10)
+                                            k_highest=3)
 
 
         if verbosity_level >= 1:
