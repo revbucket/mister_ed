@@ -25,6 +25,7 @@ import argparse
 
 import re
 import copy
+import math
 
 
 # Mister_ed imports
@@ -70,11 +71,7 @@ FLOW_LINF_BOUND = 0.05
 
 
 
-##############################################################################
-#             FGSM ONLY                                                      #
-##############################################################################
-
-
+# FGSM ONLY
 def build_fgsm_attack(classifier_net, normalizer, use_gpu):
     delta_threat = ap.ThreatModel(ap.DeltaAddition,
                                   ap.PerturbationParameters(lp_style='inf',
@@ -155,6 +152,84 @@ def build_stadv_linf_attack(classifier_net, normalizer, use_gpu):
     pgd_attack = aar.PGD(classifier_net, normalizer, flow_threat, loss_fxn)
     params = advtrain.AdversarialAttackParameters(pgd_attack, 1.0,
                             attack_specific_params={'attack_kwargs': pgd_kwargs})
+    return params
+
+
+# Delta + R + T ATTACK
+def build_rotation_translation_attack(classifier_net, normalizer, use_gpu):
+    # L_inf + flow style attack
+    delta_threat = ap.ThreatModel(ap.DeltaAddition,
+                                  ap.PerturbationParameters(lp_style='inf',
+                                                            lp_bound=L_INF_BOUND,
+                                                            use_gpu=use_gpu))
+
+    trans_threat = ap.ThreatModel(ap.ParameterizedXformAdv,
+                                  ap.PerturbationParameters(lp_style=1,
+                                                            lp_bound=0.05,
+                                                            xform_class=st.TranslationTransform,
+                                                            use_gpu=use_gpu))
+    rotation_threat = ap.ThreatModel(ap.ParameterizedXformAdv,
+                                     ap.PerturbationParameters(xform_class=st.RotationTransform,
+                                                              lp_style='inf', lp_bound=math.pi / 24.,
+                                                              use_gpu=use_gpu))
+
+    sequence_threat = ap.ThreatModel(ap.SequentialPerturbation,
+                                 [delta_threat, trans_threat, rotation_threat])
+    pgd_kwargs = copy.deepcopy(GLOBAL_ATK_KWARGS)
+    pgd_kwargs['optimizer_kwargs']['lr'] = 0.001
+
+    loss_fxn = plf.VanillaXentropy(classifier_net, normalizer)
+    pgd_attack = aar.PGD(classifier_net, normalizer, sequence_threat,
+                         loss_fxn, use_gpu=use_gpu)
+
+    params = advtrain.AdversarialAttackParameters(pgd_attack, 1.0,
+                                       attack_specific_params={'attack_kwargs': pgd_kwargs})
+    return params
+
+
+
+def build_full_attack(classifier_net, normalizer, use_gpu):
+    # L_inf + flow style attack
+    delta_threat = ap.ThreatModel(ap.DeltaAddition,
+                                  ap.PerturbationParameters(lp_style='inf',
+                                                            lp_bound=L_INF_BOUND,
+                                                            use_gpu=use_gpu))
+
+    trans_threat = ap.ThreatModel(ap.ParameterizedXformAdv,
+                                  ap.PerturbationParameters(lp_style=1,
+                                                            lp_bound=0.05,
+                                                            xform_class=st.TranslationTransform,
+                                                            use_gpu=use_gpu))
+    flow_threat = ap.ThreatModel(ap.ParameterizedXformAdv,
+                                 ap.PerturbationParameters(lp_style='inf',
+                                                           lp_bound=FLOW_LINF_BOUND,
+                                                           xform_class=st.FullSpatial,
+                                                           use_gpu=use_gpu,
+                                                           use_stadv=True))
+
+    rotation_threat = ap.ThreatModel(ap.ParameterizedXformAdv,
+                                     ap.PerturbationParameters(xform_class=st.RotationTransform,
+                                                              lp_style='inf', lp_bound=math.pi / 24.,
+                                                              use_gpu=use_gpu))
+
+    sequence_threat = ap.ThreatModel(ap.SequentialPerturbation,
+                                 [delta_threat, flow_threat, trans_threat, rotation_threat],
+                                 ap.PerturbationParameters(norm_weights=[0.0, 1.0, 1.0, 1.0]))
+    pgd_kwargs = copy.deepcopy(GLOBAL_ATK_KWARGS)
+    pgd_kwargs['optimizer_kwargs']['lr'] = 0.001
+
+    adv_loss = lf.CWLossF6(classifier_net, normalizer)
+    st_loss = lf.PerturbationNormLoss(lp=2)
+
+    loss_fxn = lf.RegularizedLoss({'adv': adv_loss, 'st':st_loss},
+                                  {'adv': 1.0, 'st': 0.05},
+                                  negate=True)
+
+    pgd_attack = aar.PGD(classifier_net, normalizer, sequence_threat,
+                         loss_fxn, use_gpu=use_gpu)
+
+    params = advtrain.AdversarialAttackParameters(pgd_attack, 1.0,
+                                       attack_specific_params={'attack_kwargs': pgd_kwargs})
     return params
 
 
