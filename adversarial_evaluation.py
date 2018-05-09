@@ -153,13 +153,14 @@ class EvaluationResult(object):
         successful_pert, successful_orig = self._get_successful_attacks(
                                             attack_out, ground_examples, labels)
 
-        if successful_pert is None or successful_pert.shape == torch.Size([]):
+        if successful_pert is None or successful_pert.numel() == 0: 
             return
 
         successful_pert = Variable(successful_pert)
         successful_orig = Variable(successful_orig)
         num_successful = successful_pert.shape[0]
         xform = lambda im: im * 2.0 - 1.0
+
         lpips_dist = self.dist_model.forward_var(xform(successful_pert),
                                                  xform(successful_orig))
         avg_lpips_dist = float(torch.mean(lpips_dist))
