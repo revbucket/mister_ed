@@ -82,7 +82,7 @@ class AdversarialAttack(object):
         adv_prec = utils.accuracy(adv_output.data, labels.data,
                                   topk=(topk,))
 
-        return start_prec[0][0], adv_prec[0][0]
+        return float(start_prec[0]), float(adv_prec[0])
 
 
     def eval_attack_only(self, adversarials, labels, topk=1):
@@ -151,7 +151,7 @@ class AdversarialAttack(object):
         else:
             pass
 
-        print_str += " %s correct" % new_prec[0][0]
+        print_str += " %s correct" % float(new_prec[0])
 
         print print_str
 
