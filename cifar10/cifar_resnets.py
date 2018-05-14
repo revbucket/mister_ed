@@ -49,7 +49,10 @@ def _weights_init(m):
     classname = m.__class__.__name__
     # print(classname)
     if isinstance(m, nn.Linear) or isinstance(m, nn.Conv2d):
-        init.kaiming_normal_(m.weight)
+        try:
+            init.kaiming_normal_(m.weight)
+        except AttributeError:
+            init.kaiming_normal(m.weight)
 
 class LambdaLayer(nn.Module):
     def __init__(self, lambd):
