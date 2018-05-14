@@ -8,9 +8,11 @@ TODO: this needs to be fleshed out, as a general technique to make adversarial
 import torch
 import torch.nn as nn
 import spatial_transformers as st
+import utils.image_utils as img_utils
 import utils.pytorch_utils as utils
 from torch.autograd import Variable
 import functools
+
 
 # assert initialized decorator
 def initialized(func):
@@ -267,6 +269,33 @@ class AdversarialPerturbation(nn.Module):
         return [torch.index_select(self.adversarial_tensors(), 0, idxs),
                 torch.index_select(self.originals, 0, idxs)]
 
+    @initialized
+    def display(self, scale=5, successful_only=False, classifier_net=None,
+                normalizer=None):
+        """ Displays this adversarial perturbation in a 3-row format:
+            top row is adversarial images, second row is original images,
+            bottom row is difference magnified by scale (default 5)
+        ARGS:
+            scale: int - how much to magnify differences by
+            successful_only: bool - if True we only display successful (in that
+                             advs output different classifier outputs)
+                             If this is not None, classifie_net and normalizer
+                             cannot be None
+        RETURNS:
+            None, but displays images
+        """
+        if successful_only:
+            assert classifier_net is not None
+            assert normalizer is not None
+            advs, origs = self.collect_successful(classifier_net, normalizer)
+        else:
+            advs = self.adversarial_tensors()
+            origs = self.originals
+
+        diffs = torch.clamp((advs - origs) * scale + 0.5, 0, 1)
+        img_utils.show_images([advs, origs, diffs])
+
+
 class PerturbationParameters(dict):
     """ Object that stores parameters like a dictionary.
         This allows perturbation classes to be only partially instantiated and
@@ -299,7 +328,7 @@ class ThreatModel(object):
         self.perturbation_class = perturbation_class
         if isinstance(param_kwargs, dict):
             param_kwargs = PerturbationParameters(**param_kwargs)
-            
+
         self.param_kwargs = param_kwargs
         self.other_args = other_args
 
