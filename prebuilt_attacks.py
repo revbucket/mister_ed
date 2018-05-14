@@ -91,7 +91,7 @@ def build_delta_fgsm(model, normalizer, linf_bound=L_INF_BOUND, use_gpu=USE_GPU,
 
     to_eval= {'top1': 'top1',
               'lpips': 'avg_successful_lpips'}
-    eval_result = adveval.EvaluationResult(params, classifier_net, cifar_normer,
+    eval_result = adveval.EvaluationResult(params, model, normalizer,
                                            to_eval=to_eval, use_gpu=USE_GPU)
     return eval_result
 
