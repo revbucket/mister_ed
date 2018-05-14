@@ -297,9 +297,8 @@ class ThreatModel(object):
         """
         assert issubclass(perturbation_class, AdversarialPerturbation)
         self.perturbation_class = perturbation_class
-
         if isinstance(param_kwargs, dict):
-            param_kwargs = PerturbationParameters(*param_kwargs)
+            param_kwargs = PerturbationParameters(**param_kwargs)
         self.param_kwargs = param_kwargs
         self.other_args = other_args
 

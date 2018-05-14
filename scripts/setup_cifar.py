@@ -131,4 +131,5 @@ load_cifar_classifiers()
 
 
 print "\n Okay, you should be good to go now! "
-print "Try running main_sandbox.py for a quick example"
+print "Try running tutorial_{1,2,3}.ipynb in notebooks/"
+

@@ -269,7 +269,7 @@ class AdversarialTraining(object):
                 minibatch_num % self.verbosity_adv == self.verbosity_adv - 1):
                 accuracy = param.eval(inputs, adv_inputs, labels, adv_idxs)
                 print('[%d, %5d] accuracy: (%.3f, %.3f)' %
-                  (epoch_num + 1, minibatch_num + 1, accuracy[1], accuracy[0]))
+                  (epoch_num, minibatch_num + 1, accuracy[1], accuracy[0]))
 
             if adv_saver is not None: # Save the adversarial examples
                 adv_saver.save_minibatch(adv_inputs, adv_labels)
@@ -375,7 +375,7 @@ class AdversarialTraining(object):
         #   Training loop                                                    #
         ######################################################################
 
-        for epoch in range(starting_epoch, num_epochs):
+        for epoch in range(starting_epoch + 1, num_epochs + 1):
             running_loss = 0.0
             for i, data in enumerate(data_loader, 0):
                 inputs, labels = data
@@ -413,11 +413,11 @@ class AdversarialTraining(object):
                 optimizer.step()
 
                 # print things
-                running_loss += loss.data[0]
+                running_loss += float(loss.data)
                 if (verbosity_level >= 1 and
                     i % verbosity_minibatch == verbosity_minibatch - 1):
                     print('[%d, %5d] loss: %.6f' %
-                          (epoch + 1, i + 1, running_loss / 2000))
+                          (epoch, i + 1, running_loss / 2000))
                     running_loss = 0.0
 
             # end_of_epoch
