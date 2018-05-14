@@ -336,7 +336,8 @@ def build_delta_rot_trans_pgd(model, normalizer, delta_bound=L_INF_BOUND,
         attack_loss = plf.VanillaXentropy(model, normalizer)
     else:
         cw_loss = lf.CWLossF6(model, normalizer)
-        attack_loss = lf.RegularizedLoss({'adv': cw_loss}, {'adv': 1.0})
+        attack_loss = lf.RegularizedLoss({'adv': cw_loss}, {'adv': 1.0},
+                                         negate=True)
 
 
 
