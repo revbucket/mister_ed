@@ -247,7 +247,8 @@ class PGD(AdversarialAttack):
 
     def attack(self, examples, labels, step_size=1.0/255.0,
                num_iterations=20, random_init=False, signed=True,
-               optimizer=None, optimizer_kwargs=None, verbose=True):
+               optimizer=None, optimizer_kwargs=None,
+               loss_convergence=0.999, verbose=True):
         """ Builds PGD examples for the given examples with l_inf bound and
             given step size. Is almost identical to the BIM attack, except
             we take steps that are proportional to gradient value instead of
@@ -261,7 +262,10 @@ class PGD(AdversarialAttack):
             l_inf_bound : float - how much we're allowed to perturb each pixel
                           (relative to the 0.0, 1.0 range)
             step_size : float - how much of a step we take each iteration
-            num_iterations: int - how many iterations we take
+            num_iterations: int or pair of ints - how many iterations we take.
+                            If pair of ints, is of form (lo, hi), where we run
+                            at least 'lo' iterations, at most 'hi' iterations
+                            and we quit early if loss has stabilized.
             random_init : bool - if True, we randomly pick a point in the
                                l-inf epsilon ball around each example
             signed : bool - if True, each step is
@@ -292,6 +296,13 @@ class PGD(AdversarialAttack):
         var_examples = Variable(examples, requires_grad=True)
         var_labels = Variable(labels, requires_grad=False)
 
+        if isinstance(num_iterations, int):
+            min_iterations = num_iterations
+            max_iterations = num_iterations
+        elif isinstance(num_iterations, tuple):
+            min_iterations, max_iterations = num_iterations
+        prev_loss = None
+
         ######################################################################
         #   Loop through iterations                                          #
         ######################################################################
@@ -314,7 +325,8 @@ class PGD(AdversarialAttack):
         update_fxn = lambda grad_data: -1 * step_size * torch.sign(grad_data)
 
 
-        for iter_no in xrange(num_iterations):
+
+        for iter_no in xrange(max_iterations):
             perturbation.zero_grad()
             loss = self.loss_fxn.forward(perturbation(var_examples), var_labels,
                                          perturbation=perturbation)
@@ -327,6 +339,16 @@ class PGD(AdversarialAttack):
                 optimizer.step()
             self.validator(perturbation(var_examples), var_labels,
                            iter_no=iter_no)
+
+            # Stop early if loss didn't go down too much
+            if (iter_no >= min_iterations and
+                float(loss) >= loss_convergence * prev_loss):
+                if verbose:
+                    print "Stopping early at %03d iterations" % iter_no
+                break
+            prev_loss = float(loss)
+
+
 
         perturbation.zero_grad()
         self.loss_fxn.cleanup_attack_batch()
