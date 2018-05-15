@@ -60,8 +60,8 @@ class AdversarialPerturbation(nn.Module):
         # Stores parameters of the adversarial perturbation and hyperparams
         # to compute total perturbation norm here
 
-    def __call__(self, x):
-        return self.forward(x)
+    def __call__(self, x, scale=None):
+        return self.forward(x, scale=scale)
 
     def __repr__(self):
         if isinstance(self.perturbation_params, tuple):
@@ -118,7 +118,7 @@ class AdversarialPerturbation(nn.Module):
         raise NotImplementedError("Need to call subclass method here")
 
     @initialized
-    def make_valid_image(self, x):
+    def make_valid_image(self, x, scale=None):
         """ This takes in the minibatch self's parameters were tuned for and
             clips the parameters such that this is still a valid image.
         ARGS:
@@ -130,7 +130,7 @@ class AdversarialPerturbation(nn.Module):
         pass # Only implement in classes that can create invalid images
 
     @initialized
-    def forward(self, x):
+    def forward(self, x, scale=None):
         """ This takes in the minibatch self's parameters were tuned for and
             outputs a variable of the perturbation applied to the images
         ARGS:
@@ -397,10 +397,12 @@ class DeltaAddition(AdversarialPerturbation):
         self.initialized = True
 
     @initialized
-    def perturbation_norm(self, x=None, lp_style=None):
+    def perturbation_norm(self, x=None, lp_style=None, scale=None):
         lp_style = lp_style or self.lp_style
         assert isinstance(lp_style, int) or lp_style == 'inf'
-        return utils.summed_lp_norm(self.delta, lp=lp_style)
+        if scale is None:
+            scale = 1.0
+        return utils.summed_lp_norm(self.delta * scale, lp=lp_style)
 
 
     @initialized
@@ -411,11 +413,15 @@ class DeltaAddition(AdversarialPerturbation):
         self.delta.data.add_(delta_diff)
 
     @initialized
-    def make_valid_image(self, x):
-        new_delta = self.delta.data
+    def make_valid_image(self, x, scale=None):
+        if scale is None:
+            scale = 1.0
+        safe_scale = utils.safe_tensor(scale) + 1e-10
+        new_delta = self.delta.data * safe_scale
+
         change_in_delta = utils.clamp_0_1_delta(new_delta,
                                                 utils.safe_tensor(x))
-        self.delta.data.add_(change_in_delta)
+        self.delta.data.add_(change_in_delta / safe_scale)
 
     @initialized
     def update_params(self, step_fxn):
@@ -452,12 +458,19 @@ class DeltaAddition(AdversarialPerturbation):
         return new_perturbation
 
 
-    def forward(self, x):
+    def forward(self, x, scale=None):
         if not self.initialized:
             self.setup(x)
-        self.make_valid_image(x) # not sure which one to do first...
+
+        if scale is not None:
+            assert isinstance(scale, Variable)
+            assert 0.0 <= float(scale) <= 1.0
+        else:
+            scale = 1.0
+
+        self.make_valid_image(x, scale=scale) # not sure which one to do first...
         self.constrain_params()
-        return x + self.delta
+        return x + self.delta * scale
 
 
 
@@ -496,13 +509,13 @@ class ParameterizedXformAdv(AdversarialPerturbation):
         self.initialized = True
 
     @initialized
-    def perturbation_norm(self, x=None, lp_style=None):
+    def perturbation_norm(self, x=None, lp_style=None, scale=None):
         lp_style = lp_style or self.lp_style
         if self.use_stadv is not None:
             assert isinstance(self.xform, st.FullSpatial)
-            return self.xform.stAdv_norm()
+            return self.xform.stAdv_norm(scale=scale)
         else:
-            return self.xform.norm(lp=lp_style)
+            return self.xform.norm(lp=lp_style, scale=scale)
 
     @initialized
     def constrain_params(self, x=None):
@@ -554,11 +567,15 @@ class ParameterizedXformAdv(AdversarialPerturbation):
         return new_perturbation
 
 
-    def forward(self, x):
+    def forward(self, x, scale=None):
         if not self.initialized:
             self.setup(x)
+
+        if scale is not None:
+            assert isinstance(scale, Variable)
+            assert 0.0 <= float(scale) <= 1.0
         self.constrain_params()
-        return self.xform.forward(x)
+        return self.xform.forward(x, scale=scale)
 
 
 
@@ -653,11 +670,11 @@ class SequentialPerturbation(AdversarialPerturbation):
             return out
 
     @initialized
-    def make_valid_image(self, x):
+    def make_valid_image(self, x, scale=None):
         x = self.pad(x)
         for layer in self.pipeline:
-            layer.make_valid_image(x)
-            x = layer(x)
+            layer.make_valid_image(x, scale=scale)
+            x = layer(x, scale=scale)
 
 
     @initialized
@@ -697,7 +714,7 @@ class SequentialPerturbation(AdversarialPerturbation):
 
 
 
-    def forward(self, x, layer_slice=None):
+    def forward(self, x, layer_slice=None, scale=None):
         """ Layer slice here is either an int or a tuple
         If int, we run forward only the first layer_slice layers
         If tuple, we start at the
@@ -739,6 +756,50 @@ class SequentialPerturbation(AdversarialPerturbation):
             layer.attach_originals(originals)
 
 
+
+############################################################################
+#                                                                          #
+#                      CONVEX COMBINATION PERTURBATIONS                    #
+#                                                                          #
+############################################################################
+
+class ConvexPerturbation(SequentialPerturbation):
+    """ Pretty much a sequential perturbation, except we only have two
+        threat models and we have a convex combination between the two of them
+    """
+
+    def __init__(self, threat_model, perturbation_sequence,
+                 global_parameters=PerturbationParameters(pad=10),
+                 preinit_pipeline=None):
+        super(ConvexPerturbation, self).__init__(threat_model,
+                                                 perturbation_sequence,
+                                                 global_parameters,
+                                             preinit_pipeline=preinit_pipeline)
+
+        self.lambda_ = nn.Parameter(torch.zeros(1))
+
+
+        assert len(self.pipeline) == 2
+
+    def current_scale(self):
+        return torch.tanh(self.lambda_) / 2 + 0.5
+
+    def forward(self, x, scale=None):
+
+        # Handle padding
+        if not self.initialized:
+            self.setup(x)
+
+        if scale is None:
+            scale = self.current_scale()
+
+        self.constrain_params()
+        self.make_valid_image(x, scale=scale)
+
+        x = self.pad(x)
+        for layer in self.pipeline:
+            x = layer(x, scale=scale)
+        return self.unpad(x)
 
 
 

@@ -40,12 +40,15 @@ def safe_tensor(entity):
     """ Returns a tensor of an entity, which may or may not already be a
         tensor
     """
+
     if isinstance(entity, Variable):
         return entity.data
     elif isinstance(entity, torch.tensor._TensorBase):
         return entity
     elif isinstance(entity, np.ndarray):
         return torch.Tensor(entity) # UNSAFE CUDA CASTING
+    elif isinstance(entity, float):
+        return entity
     else:
         raise Exception("Can't cast %s to a Variable" %
                         entity.__class__.__name__)

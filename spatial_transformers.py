@@ -41,7 +41,7 @@ class ParameterizedTransformation(nn.Module):
         super(ParameterizedTransformation, self).__init__()
         self.use_gpu = kwargs.get('use_gpu', False)
 
-    def norm(self, lp='inf'):
+    def norm(self, lp='inf', scale=None):
         raise NotImplementedError("Need to call subclass's norm!")
 
     @classmethod
@@ -81,7 +81,7 @@ class ParameterizedTransformation(nn.Module):
         return new_xform
 
 
-    def forward(self, examples):
+    def forward(self, examples, scale=None):
         raise NotImplementedError("Need to call subclass's forward!")
 
 
@@ -103,7 +103,8 @@ class FullSpatial(ParameterizedTransformation):
         super(FullSpatial, self).__init__(**kwargs)
         img_shape = kwargs['shape']
         self.img_shape = img_shape
-        self.xform_params = nn.Parameter(self.identity_params(img_shape))
+        self.id_params = self.identity_params(img_shape)
+        self.xform_params = nn.Parameter(torch.zeros_like(self.id_params))
 
 
 
@@ -130,7 +131,7 @@ class FullSpatial(ParameterizedTransformation):
         return F.affine_grid(identity_affine_transform, shape).data
 
 
-    def stAdv_norm(self):
+    def stAdv_norm(self, scale=None):
         """ Computes the norm used in
            "Spatially Transformed Adversarial Examples"
         """
@@ -154,11 +155,11 @@ class FullSpatial(ParameterizedTransformation):
         # torch.matmul(foo, col_permut)
         for col in ['left', 'right']:
             col_val = {'left': -1, 'right': 1}[col]
-            idx = ((torch.arange(width) - col_val) % width)            
+            idx = ((torch.arange(width) - col_val) % width)
             idx = idx.type(dtype).type(torch.LongTensor)
             if self.xform_params.is_cuda:
                 idx = idx.cuda()
-                
+
             col_permut = torch.zeros(height, width).index_copy_(1, idx.cpu(),
                                                                 id_builder().cpu())
             col_permut = col_permut.type(dtype)
@@ -176,8 +177,9 @@ class FullSpatial(ParameterizedTransformation):
         ######################################################################
         #   Build delta_u, delta_v grids                                     #
         ######################################################################
-        id_params = Variable(self.identity_params(self.img_shape))
-        delta_grids = self.xform_params - id_params
+        if scale is None:
+            scale = 1
+        delta_grids = self.xform_params * scale
         delta_grids = delta_grids.permute(0, 3, 1, 2)
 
         ######################################################################
@@ -200,27 +202,31 @@ class FullSpatial(ParameterizedTransformation):
         return output
 
 
-    def norm(self, lp='inf'):
+    def norm(self, lp='inf', scale=None):
         """ Returns the 'norm' of this transformation in terms of an LP norm on
             the parameters, summed across each transformation per minibatch
         ARGS:
             lp : int or 'inf' - which lp type norm we use
         """
-
+        if scale is None:
+            scale = 1
         if isinstance(lp, int) or lp == 'inf':
-            identity_params = Variable(self.identity_params(self.img_shape))
-            return utils.summed_lp_norm(self.xform_params - identity_params, lp)
+            return utils.summed_lp_norm(self.xform_params * scale, lp)
         else:
             assert lp == 'stAdv'
-            return self._stAdv_norm()
+            return self._stAdv_norm(scale=scale)
 
 
     def clip_params(self):
         """ Clips the parameters to be between -1 and 1 as required for
             grid_sample
         """
-        clamp_params = torch.clamp(self.xform_params, -1, 1).data
-        change_in_params = clamp_params - self.xform_params.data
+
+
+        clamp_params = torch.clamp(self.xform_params.data + self.id_params,
+                                   -1, 1)
+        change_in_params = clamp_params -\
+                           (self.xform_params.data + self.id_params)
         self.xform_params.data.add_(change_in_params)
 
 
@@ -263,18 +269,21 @@ class FullSpatial(ParameterizedTransformation):
         # then project back
 
         if lp == 'inf':
-            identity_params = self.identity_params(self.img_shape)
-            clamp_params = utils.clamp_ref(self.xform_params.data,
-                                               identity_params, lp_bound)
+            clamp_params = torch.clamp(self.xform_params.data,
+                                       -lp_bound, lp_bound)
             change_in_params = clamp_params - self.xform_params.data
             self.xform_params.data.add_(change_in_params)
         else:
             raise NotImplementedError("Only L-infinity bounds working for now ")
 
 
-    def forward(self, x):
+    def forward(self, x, scale=None):
         # usual forward technique
-        return F.grid_sample(x, self.xform_params)
+
+        if scale is None:
+            scale = 1.0
+        return F.grid_sample(x, self.xform_params * scale +
+                                Variable(self.id_params))
 
 
 
@@ -297,7 +306,7 @@ class AffineTransform(ParameterizedTransformation):
         self.xform_params = nn.Parameter(self.identity_params(img_shape))
 
 
-    def norm(self, lp='inf'):
+    def norm(self, lp='inf', scale=None):
         identity_params = Variable(self.identity_params(self.img_shape))
         return utils.summed_lp_norm(self.xform_params - identity_params, lp)
 
@@ -443,7 +452,7 @@ class PointScaleTransform(ParameterizedTransformation):
 
 
 
-    def norm(self, lp='inf'):
+    def norm(self, lp='inf', scale=None):
         return utils.summed_lp_norm(self.xform_params, lp)
 
 
