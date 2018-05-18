@@ -255,7 +255,8 @@ def build_rot_trans_pgd(model, normalizer, trans_bound=TRANS_LINF,
         attack_loss = plf.VanillaXentropy(model, normalizer)
     else:
         cw_loss = lf.CWLossF6(model, normalizer)
-        attack_loss = lf.RegularizedLoss({'adv': cw_loss}, {'adv': 1.0})
+        attack_loss = lf.RegularizedLoss({'adv': cw_loss}, {'adv': 1.0},
+                                         negate=True)
 
 
 
@@ -333,7 +334,7 @@ def build_delta_rot_trans_pgd(model, normalizer, delta_bound=L_INF_BOUND,
     # Build loss
     assert adv_loss in ['xentropy', 'cw']
     if adv_loss == 'xentropy':
-        attack_loss = plf.VanillaXentropy(model, normalizer)
+        attack_loss = plf.VanillaXentropy(model, normalizer)        
     else:
         cw_loss = lf.CWLossF6(model, normalizer)
         attack_loss = lf.RegularizedLoss({'adv': cw_loss}, {'adv': 1.0},
@@ -406,13 +407,15 @@ def build_delta_stadv_pgd(model, normalizer, delta_bound=L_INF_BOUND,
     assert adv_loss in ['cw', 'xentropy']
     if adv_loss == 'xentropy':
         adv_loss_obj = lf.PartialXentropy(model, normalizer=normalizer)
+        adv_loss_scale = -1.0
     else:
         adv_loss_obj = lf.CWLossF6(model, normalizer)
-
+        adv_loss_scale = 1.0
+        
     st_loss = lf.PerturbationNormLoss(lp=2)
 
     loss_fxn = lf.RegularizedLoss({'adv': adv_loss_obj, 'st':st_loss},
-                                  {'adv': 1.0, 'st': 0.05},
+                                  {'adv': adv_loss_scale, 'st': 0.05},
                                   negate=True)
 
     # Build attack
@@ -499,6 +502,91 @@ def build_delta_stadv_rot_trans_pgd(model, normalizer, delta_bound=L_INF_BOUND,
     assert adv_loss in ['cw', 'xentropy']
     if adv_loss == 'xentropy':
         adv_loss_obj = lf.PartialXentropy(model, normalizer=normalizer)
+        loss_multi = -1.0
+    else:
+        adv_loss_obj = lf.CWLossF6(model, normalizer)
+        loss_multi = 1.0
+
+    st_loss = lf.PerturbationNormLoss(lp=2)
+
+    loss_fxn = lf.RegularizedLoss({'adv': adv_loss_obj, 'st':st_loss},
+                                  {'adv': loss_multi, 'st': 0.05},
+                                  negate=True)
+
+    # Build attack
+    optimizer = optim.Adam
+    optimizer_kwargs = {'lr': 0.001}
+    pgd_attack = aar.PGD(model, normalizer, sequence_threat, loss_fxn,
+                         use_gpu=use_gpu)
+
+    assert output in ['attack', 'params', 'eval']
+    if output == 'attack':
+        return pgd_attack
+
+    pgd_kwargs = {'num_iterations': num_iter,
+                  'signed': False,
+                  'optimizer': optimizer,
+                  'optimizer_kwargs': optimizer_kwargs,
+                  'verbose': verbose,
+                  'loss_convergence': loss_convergence}
+    if extra_attack_kwargs is not None:
+        pgd_kwargs.update(extra_attack_kwargs)
+
+    params = advtrain.AdversarialAttackParameters(pgd_attack, 1.0,
+                                       attack_specific_params={'attack_kwargs': pgd_kwargs})
+    if output == 'params':
+        return params
+
+    to_eval= {'top1': 'top1',
+              'lpips': 'avg_successful_lpips'}
+
+    eval_result = adveval.EvaluationResult(params, model, normalizer,
+                                           to_eval=to_eval, use_gpu=use_gpu)
+    return eval_result
+
+
+
+
+
+
+def build_stadv_rot_trans_pgd(model, normalizer,
+                                   flow_bound=FLOW_LINF, trans_bound=TRANS_LINF,
+                                   rot_bound=ROT_LINF, use_gpu=USE_GPU,
+                              verbose=False, adv_loss='cw', num_iter=PGD_ITER,
+                              loss_convergence=LOSS_CONVERGENCE,
+                              output='attack',
+                              extra_attack_kwargs=None):
+    # Build threat
+
+    flow_threat = ap.ThreatModel(ap.ParameterizedXformAdv,
+                                 ap.PerturbationParameters(lp_style='inf',
+                                                           lp_bound=flow_bound,
+                                                           xform_class=st.FullSpatial,
+                                                           use_gpu=use_gpu,
+                                                           use_stadv=True))
+
+    trans_threat = ap.ThreatModel(ap.ParameterizedXformAdv,
+                                  ap.PerturbationParameters(lp_style='inf',
+                                                        lp_bound=trans_bound,
+                                            xform_class=st.TranslationTransform,
+                                                            use_gpu=use_gpu))
+    rotation_threat = ap.ThreatModel(ap.ParameterizedXformAdv,
+                                     ap.PerturbationParameters(
+                                                xform_class=st.RotationTransform,
+                                            lp_style='inf', lp_bound=rot_bound,
+                                            use_gpu=use_gpu))
+
+
+    sequence_threat = ap.ThreatModel(ap.SequentialPerturbation,
+                                 [flow_threat, trans_threat,
+                                  rotation_threat],
+                                ap.PerturbationParameters(norm_weights=[0.00,
+                                                            1.00, 1.0, 1.0]))
+
+    # Build loss
+    assert adv_loss in ['cw', 'xentropy']
+    if adv_loss == 'xentropy':
+        adv_loss_obj = lf.PartialXentropy(model, normalizer=normalizer)
     else:
         adv_loss_obj = lf.CWLossF6(model, normalizer)
 
@@ -538,8 +626,4 @@ def build_delta_stadv_rot_trans_pgd(model, normalizer, delta_bound=L_INF_BOUND,
     eval_result = adveval.EvaluationResult(params, model, normalizer,
                                            to_eval=to_eval, use_gpu=use_gpu)
     return eval_result
-
-
-
-
 
