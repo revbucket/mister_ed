@@ -101,7 +101,7 @@ def build_pgd_linf_attack(classifier_net, normalizer, use_gpu):
 
 
 # LINF + STADV
-def build_pgd_linf_stadv_attack(classifier_net, normalizer, use_gpu):
+def build_pgd_linf_stadv_att(classifier_net, normalizer, use_gpu):
     delta_threat = ap.ThreatModel(ap.DeltaAddition,
                                   ap.PerturbationParameters(lp_style='inf',
                                                             lp_bound=L_INF_BOUND,

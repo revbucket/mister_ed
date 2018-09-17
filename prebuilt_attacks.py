@@ -580,7 +580,7 @@ def build_stadv_rot_trans_pgd(model, normalizer,
     sequence_threat = ap.ThreatModel(ap.SequentialPerturbation,
                                  [flow_threat, trans_threat,
                                   rotation_threat],
-                                ap.PerturbationParameters(norm_weights=[0.00,
+                                ap.PerturbationParameters(norm_weights=[1.00,
                                                             1.00, 1.0, 1.0]))
 
     # Build loss

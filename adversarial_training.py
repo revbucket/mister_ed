@@ -72,6 +72,7 @@ class AdversarialAttackParameters(object):
              pre_adv_labels: Tensor with shape (N') [original labels]
              selected_idxs : Tensor with shape (N') [idxs selected]
              adv_inputs : Tensor with shape (N') [examples used to make advs]
+             perturbation: Adversarial Perturbation Object
         """
         num_elements = inputs.shape[0]
 
@@ -93,7 +94,8 @@ class AdversarialAttackParameters(object):
                                                   **self.attack_kwargs)
         adv_examples = perturbation(adv_inputs)
 
-        return (adv_examples, pre_adv_labels, selected_idxs, adv_inputs)
+        return (adv_examples, pre_adv_labels, selected_idxs, adv_inputs,
+                perturbation)
 
 
     def eval(self, ground_inputs, adv_inputs, labels, idxs, topk=1):

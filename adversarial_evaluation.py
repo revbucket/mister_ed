@@ -45,7 +45,8 @@ class EvaluationResult(object):
 
         # First map shorthand strings to methods
         shorthand_evals = {'top1': self.top1_accuracy,
-                           'avg_successful_lpips': self.avg_successful_lpips}
+                           'avg_successful_lpips': self.avg_successful_lpips,
+                           'stash_perturbations': self.stash_perturbations}
         if to_eval is None:
             to_eval = {'top1': 'top1'}
 
@@ -61,6 +62,7 @@ class EvaluationResult(object):
 
     def eval(self, examples, labels):
         attack_out = self.attack_params.attack(examples, labels)
+
         for k, v in self.to_eval.items():
             v(k, attack_out, examples, labels)
 
@@ -153,7 +155,7 @@ class EvaluationResult(object):
         successful_pert, successful_orig = self._get_successful_attacks(
                                             attack_out, ground_examples, labels)
 
-        if successful_pert is None or successful_pert.numel() == 0: 
+        if successful_pert is None or successful_pert.numel() == 0:
             return
 
         successful_pert = Variable(successful_pert)
@@ -166,6 +168,24 @@ class EvaluationResult(object):
         avg_lpips_dist = float(torch.mean(lpips_dist))
 
         result.update(avg_lpips_dist, n=num_successful)
+
+    def stash_perturbations(self, eval_label, attack_out, ground_examples,
+                            labels):
+        """ This will store the perturbations.
+           (TODO: make these tensors and store on CPU)
+        """
+
+        ######################################################################
+        #   First set up evaluation result if it doesn't exist               #
+        ######################################################################
+        if self.results[eval_label] is None:
+            self.results[eval_label] = []
+
+        result = self.results[eval_label]
+        perturbation_obj = attack_out[4]
+        result.append(perturbation_obj)
+
+
 
 
 
