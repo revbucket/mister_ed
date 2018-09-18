@@ -67,44 +67,12 @@ class EvaluationResult(object):
             v(k, attack_out, examples, labels)
 
 
-    def _get_successful_attacks(self, attack_out, ground_examples, labels):
-        # Success is defined as f(x) != f(adv(x))
-        # attack_out is f(adv(x)), so need to compute f(x)
-        # --- first select the ground examples from the indices
+    def _get_successful_attacks(self, attack_out):
+        ''' Gets the (successful, corresponding-original) attacks '''
+        perturbation = attack_out[4]
+        return perturbation.collect_successful(self.classifier_net,
+                                               self.normalizer)
 
-        # --- compute the LPIPS distance
-        img_shape = (-1,) + tuple(ground_examples.shape[1:])
-        img_dim = len(ground_examples.shape[1:])
-        mask = torch.zeros_like(labels).type(torch.ByteTensor)
-        if labels.is_cuda:
-            mask = mask.cuda()
-        mask[attack_out[2]] = 1
-        mask = mask.view(-1, *([1] * img_dim))
-
-        selected_grounds = ground_examples.masked_select(mask).view(*img_shape)
-
-        # --- next classify these inputs
-        ground_logits = self.classifier_net(
-                            self.normalizer(Variable(selected_grounds)))
-        ground_class_out = torch.max(ground_logits, 1)[1].data
-
-        # --- and compare to adversarial labels to find successful attacks
-        successful_attacks = attack_out[1] != ground_class_out
-        #successful_attacks = successful_attacks.view(-1, *([1] * img_dim))
-
-
-        num_successful = int(successful_attacks.shape[0])
-        if num_successful == 0:
-            return None, None
-
-        # --- now select only the successful attacks
-        succ_atk_bcast = successful_attacks.view(-1, *([1] * img_dim))
-        successful_pert = attack_out[0].data.masked_select(succ_atk_bcast)\
-                                       .view(*img_shape)
-        successful_orig = selected_grounds.masked_select(succ_atk_bcast)\
-                                          .view(*img_shape)
-
-        return successful_pert, successful_orig
 
 
 
@@ -153,7 +121,7 @@ class EvaluationResult(object):
         #  Compute which attacks were successful                             #
         ######################################################################
         successful_pert, successful_orig = self._get_successful_attacks(
-                                            attack_out, ground_examples, labels)
+                                                                     attack_out)
 
         if successful_pert is None or successful_pert.numel() == 0:
             return
