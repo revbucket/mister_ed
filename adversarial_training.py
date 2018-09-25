@@ -265,7 +265,7 @@ class AdversarialTraining(object):
         adv_inputs_total, adv_labels_total, coupled_inputs = [], [], []
         for param in attack_parameters:
             adv_data = param.attack(inputs, labels)
-            adv_inputs, adv_labels, adv_idxs, og_adv_inputs = adv_data
+            adv_inputs, adv_labels, adv_idxs, og_adv_inputs, _ = adv_data
 
             if (self.verbosity_level >= 1 and
                 minibatch_num % self.verbosity_adv == self.verbosity_adv - 1):

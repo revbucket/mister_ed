@@ -257,7 +257,8 @@ class AdversarialEvaluation(object):
         for i, data in enumerate(data_loader, 0):
             if num_minibatches is not None and i >= num_minibatches:
                 break
-            print "Starting minibatch %s..." % i
+            if verbose:
+                print "Starting minibatch %s..." % i
 
 
             inputs, labels = data
