@@ -227,6 +227,107 @@ def equidistant_points(point_list, num_intervals):
 
 
 
+'''
+def bilinear_interpolated_isoline(heatmap, x_scale, y_scale, initial_y_point):
+    """ Builds isolines by bilinear interpolation on a predetermined grid
+    ARGS:
+        heatmap: NxM array - 2D array of lattice points to perform bilinear
+                             interpolation over. heatmap[i][j] means y=i, x=j
+        x_scale : float - the maximum x-value
+        y_scale : float - the maximum y-value
+        initial_y_point: float - value between 0 and y_scale
+    RETURNS:
+        a list of (x,y) points scaled by the x_scale, y_scale
+    """
+    eps = 1e-6
+    assert 0 <= initial_y_point <= y_scale
+    y_len = len(heatmap)
+    x_len = len(heatmap[0])
+
+    x_interval = x_scale / float(x_len)
+    y_interval = y_scale / float(y_len)
+
+    def next_point(p, current_val):
+        """ Gets the four corner points for a given point.
+            TRIES TO GO RIGHT!
+
+            This point better be on the top or left wall of a box. It will
+            output a point that is on the top or left wall of a box
+        """
+        x_val, y_val = p
+        x_idx = x_val / x_interval
+        y_idx = y_val / y_interval
+
+        y_idx_modulus = y_idx % 1.0
+        x_idx_modulus = x_idx % 1.0
+
+        # First rectify numericals to be in alignment with induction
+        if (1 - eps < y_idx_modulus < 1):
+            y_idx_modulus = 0
+
+
+        # also handle corner cases
+
+
+        # Either on the left side, diagonal, or top
+        if x_idx_modulus < eps or :
+            left_wall = True
+            diag = False
+
+        elif abs(x_idx_modulus - y_idx_modulus) < eps:
+            diag = True
+            left_wall = False
+        else:
+            raise Exception("BROKE INDUCTIVE ASSUMPTION")
+
+        left_x, right_x = int(math.floor(x_idx)), int(math.floor(x_idx) + 1)
+        lower_y, upper_y = int(math.floor(y_idx)), int(math.floor(y_idx) + 1)
+        ll_val = heatmap[lower_y][left_x]
+        ul_val = heatmap[upper_y][left_x]
+        lr_val = heatmap[lower_y][right_x]
+        ur_val = heatmap[upper_y][right_x]
+
+        if left_wall
+            # compute the plane considered by the lower left triangle
+            plane_eqn = [lr_val - ll_val, ll_val-ul_val, -1]
+            direction = [plane_eqn[1], -plane_eqn[0]] # <x, y>
+            # find the iso direction that points right
+            if direction[0] < 0:
+                direction = [-1 * _ for _ in direction]
+            elif direction[0] == 0:
+                if direction[1] > 0:
+                    direction[1] = -1 * direction[1]
+
+            # determine if we hit x-axis or x=-y line:
+            to_lr_corner_perp = [-y_idx_modulus, -1]
+            if sum(to_lr_corner_perp[i] * direction[i] for i in xrange(2)) > 0:
+                x_axis_intersection = True
+            else:
+                x_axis_intersection = False
+
+            if x_axis_intersection:
+                new_point = (y_idx_modulus * direction[0]/ -direction[1],
+                             y_interval * lower_y)
+        else:
+
+
+
+            to_x_axis_steps = y_idx_modulus / direction[1]
+            direction[1] * to_x_axis_steps
+
+
+
+
+
+
+
+
+    current_point = (0, initial_y_point)
+
+'''
+
+
+
 
 
 

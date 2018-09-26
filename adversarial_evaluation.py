@@ -90,14 +90,17 @@ class EvaluationResult(object):
         ######################################################################
         #  Computes the top 1 accuracy and updates the averageMeter          #
         ######################################################################
-        attack_examples = utils.safe_var(attack_out[0])
-        pre_adv_labels = utils.safe_var(attack_out[1])
-        num_examples = float(attack_examples.shape[0])
+        perturbation = attack_out[4]
+        adv_success = perturbation.collect_adversarially_successful(
+                                        self.classifier_net,
+                                        self.normalizer,
+                                        labels)
 
-        attack_accuracy_int = self.attack_params.eval_attack_only(
-                                                attack_examples,
-                                                pre_adv_labels, topk=1)
-        result.update(attack_accuracy_int / num_examples, n=int(num_examples))
+        num_adv = adv_success['adversarial'].shape[0]
+        num_correct = adv_success['num_correctly_classified']
+
+        if num_correct > 0:
+            result.update(num_adv / float(num_correct), n=int(num_correct))
 
 
     def avg_successful_lpips(self, eval_label, attack_out, ground_examples,
@@ -120,8 +123,13 @@ class EvaluationResult(object):
         ######################################################################
         #  Compute which attacks were successful                             #
         ######################################################################
-        successful_pert, successful_orig = self._get_successful_attacks(
-                                                                     attack_out)
+        adv_success = perturbation.collect_adversarially_successful(
+                                        self.classifier_net,
+                                        self.normalizer,
+                                        labels)
+
+        successful_pert = adv_success['adversarial']
+        successful_orig = adv_success['originals']
 
         if successful_pert is None or successful_pert.numel() == 0:
             return
@@ -136,6 +144,7 @@ class EvaluationResult(object):
         avg_lpips_dist = float(torch.mean(lpips_dist))
 
         result.update(avg_lpips_dist, n=num_successful)
+
 
     def stash_perturbations(self, eval_label, attack_out, ground_examples,
                             labels):
