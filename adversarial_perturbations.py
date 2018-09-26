@@ -270,6 +270,63 @@ class AdversarialPerturbation(nn.Module):
                 torch.index_select(self.originals, 0, idxs)]
 
     @initialized
+    def collect_adversarially_successful(self, classifier_net, normalizer,
+                                         labels):
+        """ Returns an object containing the SUCCESSFUL attacked examples,
+            their corresponding originals, and the number of misclassified
+            examples
+        ARGS:
+            classifier_net : nn.Module subclass - neural net that is the
+                             relevant classifier
+            normalizer : DifferentiableNormalize object - object to convert
+                         input data to mean-zero, unit-var examples
+            labels : Variable (longTensor N) - correct labels for classification
+                     of self.originals
+        RETURNS:
+            dict with structure:
+            {'adversarials': Variable(N'xCxHxW) - adversarial perturbation
+                            applied
+             'originals': Variable(N'xCxHxW) - unperturbed examples that
+                                               were correctly classified AND
+                                               successfully attacked
+             'num_correctly_classified': int - number of correctly classified
+                                               unperturbed examples
+            }
+        """
+        assert self.originals is not None
+        adversarials = Variable(self.adversarial_tensors())
+        originals = Variable(self.originals)
+
+        adv_out = torch.max(classifier_net(normalizer(adversarials)), 1)[1]
+        out = torch.max(classifier_net(normalizer(originals)), 1)[1]
+
+        # First take a subset of correctly classified originals
+        correct_idxs = (out == labels) # correctly classified idxs
+        adv_idx_bytes = (adv_out != out) # attacked examples
+
+        num_correctly_classified = int(sum(correct_idxs))
+
+        adv_idxs = adv_idx_bytes * correct_idxs
+
+
+        idxs = []
+        for idx, el in enumerate(adv_idxs):
+            if float(el) > 0:
+                idxs.append(idx)
+
+        idxs = torch.LongTensor(idxs)
+        if self.originals.is_cuda:
+            idxs = idxs.cuda()
+
+
+        return {'adversarial': torch.index_select(self.adversarial_tensors(),
+                                                  0, idxs),
+                'originals': torch.index_select(self.originals, 0, idxs),
+                'num_correctly_classified': num_correctly_classified}
+
+
+
+    @initialized
     def display(self, scale=5, successful_only=False, classifier_net=None,
                 normalizer=None):
         """ Displays this adversarial perturbation in a 3-row format:
