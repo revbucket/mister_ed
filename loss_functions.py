@@ -39,27 +39,26 @@ class RegularizedLoss(object):
     def forward(self, examples, labels, *args, **kwargs):
 
         output = None
+        output_per_example = kwargs.get('output_per_example', False)
         for k in self.losses:
             loss = self.losses[k]
             scalar = self.scalars[k]
 
             loss_val = loss.forward(examples, labels, *args, **kwargs)
-
             # assert scalar is either a...
-
             assert (isinstance(scalar, float) or # number
                     scalar.numel() == 1 or # tf wrapping of a number
-                    scalar.shape == loss_val.shape) # same as the
+                    scalar.shape == loss_val.shape) # same as the loss_val
 
             addendum = loss_val * scalar
             if addendum.numel() > 1:
-                addendum = torch.sum(addendum)
+                if not output_per_example:
+                    addendum = torch.sum(addendum)
 
             if output is None:
                 output = addendum
             else:
                 output = output + addendum
-
         if self.negate:
             return output * -1
         else:

@@ -334,7 +334,7 @@ def build_delta_rot_trans_pgd(model, normalizer, delta_bound=L_INF_BOUND,
     # Build loss
     assert adv_loss in ['xentropy', 'cw']
     if adv_loss == 'xentropy':
-        attack_loss = plf.VanillaXentropy(model, normalizer)        
+        attack_loss = plf.VanillaXentropy(model, normalizer)
     else:
         cw_loss = lf.CWLossF6(model, normalizer)
         attack_loss = lf.RegularizedLoss({'adv': cw_loss}, {'adv': 1.0},
@@ -411,7 +411,7 @@ def build_delta_stadv_pgd(model, normalizer, delta_bound=L_INF_BOUND,
     else:
         adv_loss_obj = lf.CWLossF6(model, normalizer)
         adv_loss_scale = 1.0
-        
+
     st_loss = lf.PerturbationNormLoss(lp=2)
 
     loss_fxn = lf.RegularizedLoss({'adv': adv_loss_obj, 'st':st_loss},

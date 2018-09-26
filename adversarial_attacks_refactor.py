@@ -158,6 +158,7 @@ class AdversarialAttack(object):
 
 
 
+
 ##############################################################################
 #                                                                            #
 #                         Fast Gradient Sign Method (FGSM)                   #
@@ -248,7 +249,8 @@ class PGD(AdversarialAttack):
     def attack(self, examples, labels, step_size=1.0/255.0,
                num_iterations=20, random_init=False, signed=True,
                optimizer=None, optimizer_kwargs=None,
-               loss_convergence=0.999, verbose=True):
+               loss_convergence=0.999, verbose=True,
+               keep_best=True):
         """ Builds PGD examples for the given examples with l_inf bound and
             given step size. Is almost identical to the BIM attack, except
             we take steps that are proportional to gradient value instead of
@@ -273,6 +275,10 @@ class PGD(AdversarialAttack):
                             [this is the form that madry et al use]
                             if False, each step is
                             adversarial = adversarial + grad
+            keep_best : bool - if True, we keep track of the best adversarial
+                               perturbations per example (in terms of maximal
+                               loss) in the minibatch. The output is the best of
+                               each of these then
         RETURNS:
             AdversarialPerturbation object with correct parameters.
             Calling perturbation() gets Variable of output and
@@ -292,7 +298,7 @@ class PGD(AdversarialAttack):
 
         perturbation = self.threat_model(examples)
 
-
+        num_examples = examples.shape[0]
         var_examples = Variable(examples, requires_grad=True)
         var_labels = Variable(labels, requires_grad=False)
 
@@ -301,6 +307,11 @@ class PGD(AdversarialAttack):
             max_iterations = num_iterations
         elif isinstance(num_iterations, tuple):
             min_iterations, max_iterations = num_iterations
+
+        if keep_best:
+            best_loss_per_example = {i: None for i in xrange(num_examples)}
+            best_perturbation = None
+
         prev_loss = None
 
         ######################################################################
@@ -325,20 +336,39 @@ class PGD(AdversarialAttack):
         update_fxn = lambda grad_data: -1 * step_size * torch.sign(grad_data)
 
 
-
         for iter_no in xrange(max_iterations):
             perturbation.zero_grad()
             loss = self.loss_fxn.forward(perturbation(var_examples), var_labels,
-                                         perturbation=perturbation)
+                                         perturbation=perturbation,
+                                         output_per_example=keep_best)
+            loss_per_example = loss
+            loss = loss.sum()
+
             loss = -1 * loss
-            torch.autograd.backward(loss)
+            torch.autograd.backward(loss.sum())
 
             if signed:
                 perturbation.update_params(update_fxn)
             else:
                 optimizer.step()
-            self.validator(perturbation(var_examples), var_labels,
-                           iter_no=iter_no)
+
+            if keep_best:
+                mask_val = torch.zeros(num_examples, dtype=torch.uint8)
+                for i, el in enumerate(loss_per_example):
+                    this_best_loss = best_loss_per_example[i]
+                    if this_best_loss is None or this_best_loss[1] < float(el):
+                        mask_val[i] = 1
+                        best_loss_per_example[i] = (iter_no, float(el))
+
+                if best_perturbation is None:
+                    best_perturbation = perturbation
+                else:
+                    best_perturbation = perturbation.merge_perturbation(
+                                                            best_perturbation,
+                                                            mask_val)
+
+            self.validator((best_perturbation or perturbation)(var_examples),
+                           var_labels, iter_no=iter_no)
 
             # Stop early if loss didn't go down too much
             if (iter_no >= min_iterations and

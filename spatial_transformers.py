@@ -137,7 +137,7 @@ class FullSpatial(ParameterizedTransformation):
 
         # ONLY WORKS FOR SQUARE MATRICES
         dtype = self.xform_params.data.type()
-        height, width = tuple(self.xform_params.shape[1:3])
+        num_examples, height, width = tuple(self.xform_params.shape[0:3])
         assert height == width
         ######################################################################
         #   Build permutation matrices                                       #
@@ -154,11 +154,11 @@ class FullSpatial(ParameterizedTransformation):
         # torch.matmul(foo, col_permut)
         for col in ['left', 'right']:
             col_val = {'left': -1, 'right': 1}[col]
-            idx = ((torch.arange(width) - col_val) % width)            
+            idx = ((torch.arange(width) - col_val) % width)
             idx = idx.type(dtype).type(torch.LongTensor)
             if self.xform_params.is_cuda:
                 idx = idx.cuda()
-                
+
             col_permut = torch.zeros(height, width).index_copy_(1, idx.cpu(),
                                                                 id_builder().cpu())
             col_permut = col_permut.type(dtype)
@@ -183,7 +183,7 @@ class FullSpatial(ParameterizedTransformation):
         ######################################################################
         #   Compute the norm                                                 #
         ######################################################################
-        output = Variable(torch.zeros(1).type(dtype))
+        output = Variable(torch.zeros(num_examples).type(dtype))
 
         for row_or_col, permutes in zip(['row', 'col'],
                                         [row_permuts, col_permuts]):
@@ -195,8 +195,7 @@ class FullSpatial(ParameterizedTransformation):
                 temp = temp.pow(2)
                 temp = temp.sum(1)
                 temp = (temp + 1e-10).pow(0.5)
-
-                output.add_(temp.sum())
+                output.add_(temp.sum((1, 2)))
         return output
 
 
@@ -209,7 +208,8 @@ class FullSpatial(ParameterizedTransformation):
 
         if isinstance(lp, int) or lp == 'inf':
             identity_params = Variable(self.identity_params(self.img_shape))
-            return utils.summed_lp_norm(self.xform_params - identity_params, lp)
+            return utils.batchwise_norm(self.xform_params - identity_params, lp,
+                                        dim=0)
         else:
             assert lp == 'stAdv'
             return self._stAdv_norm()
@@ -299,7 +299,8 @@ class AffineTransform(ParameterizedTransformation):
 
     def norm(self, lp='inf'):
         identity_params = Variable(self.identity_params(self.img_shape))
-        return utils.summed_lp_norm(self.xform_params - identity_params, lp)
+        return utils.batchwise_norm(self.xform_params - identity_params, lp,
+                                    dim=0)
 
     def identity_params(self, shape):
         """ Returns parameters for identity affine transformation
@@ -444,7 +445,7 @@ class PointScaleTransform(ParameterizedTransformation):
 
 
     def norm(self, lp='inf'):
-        return utils.summed_lp_norm(self.xform_params, lp)
+        return utils.batchwise_norm(self.xform_params, lp, dim=0)
 
 
     def project_params(self, lp, lp_bound):

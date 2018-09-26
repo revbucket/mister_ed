@@ -400,7 +400,7 @@ class DeltaAddition(AdversarialPerturbation):
     def perturbation_norm(self, x=None, lp_style=None):
         lp_style = lp_style or self.lp_style
         assert isinstance(lp_style, int) or lp_style == 'inf'
-        return utils.summed_lp_norm(self.delta, lp=lp_style)
+        return utils.batchwise_norm(self.delta, lp=lp_style)
 
 
     @initialized
