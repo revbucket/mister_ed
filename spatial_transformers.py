@@ -77,7 +77,7 @@ class ParameterizedTransformation(nn.Module):
         new_params = utils.fold_mask(self.xform_params.data,
                                      other.xform_params.data, self_mask)
         new_xform.xform_params = nn.Parameter(new_params)
-
+        new_xform.use_gpu = self.use_gpu
         return new_xform
 
 
