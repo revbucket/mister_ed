@@ -190,7 +190,10 @@ class PartialXentropy(PartialLoss):
         else:
             normed_examples = examples
 
-        criterion = nn.CrossEntropyLoss()
+        xentropy_init_kwargs = {}
+        if kwargs.get('output_per_example') == True:
+            xentropy_init_kwargs['reduction'] = 'none'
+        criterion = nn.CrossEntropyLoss(**kwargs)
         return criterion(self.classifier.forward(normed_examples), labels)
 
 ##############################################################################
