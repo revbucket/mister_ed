@@ -21,6 +21,7 @@ import os
 import config
 import glob
 import numpy as np
+from skimage.measure import compare_ssim as ssim
 import math
 
 ###########################################################################
@@ -46,6 +47,7 @@ class EvaluationResult(object):
         # First map shorthand strings to methods
         shorthand_evals = {'top1': self.top1_accuracy,
                            'avg_successful_lpips': self.avg_successful_lpips,
+                           'avg_successful_ssim': self.avg_successful_ssim,
                            'stash_perturbations': self.stash_perturbations}
         if to_eval is None:
             to_eval = {'top1': 'top1'}
@@ -136,6 +138,39 @@ class EvaluationResult(object):
         avg_lpips_dist = float(torch.mean(lpips_dist))
 
         result.update(avg_lpips_dist, n=num_successful)
+
+    def avg_successful_ssim(self, eval_label, attack_out, ground_examples,
+                            labels):
+        # We actually compute (1-ssim) to match better with notion of a 'metric'
+        ######################################################################
+        #  First set up evaluation result if doesn't exist:                  #
+        ######################################################################
+        if self.results[eval_label] is None:
+            self.results[eval_label] = utils.AverageMeter()
+
+        ######################################################################
+        #  Compute which attacks were successful                             #
+        ######################################################################
+        successful_pert, successful_orig = self._get_successful_attacks(
+                                                                     attack_out)
+        if successful_pert is None or successful_pert.numel() == 0:
+            return
+
+
+        successful_pert = Variable(successful_pert)
+        successful_orig = Variable(successful_orig)
+
+        count = 0
+        runsum = 0
+        for og, adv in zip(successful_orig, successful_pert):
+            count += 1
+            runsum += ssim(og.transpose(0, 2).cpu().numpy(),
+                           adv.transpose(0, 2).cpu().numpy(), multichannel=True)
+
+
+        avg_minus_ssim = 1 - (runsum / float(count))
+        result.update(avg_minus_ssim, n=num_successful)
+
 
     def stash_perturbations(self, eval_label, attack_out, ground_examples,
                             labels):
