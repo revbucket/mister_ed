@@ -308,9 +308,9 @@ class PGD(AdversarialAttack):
         elif isinstance(num_iterations, tuple):
             min_iterations, max_iterations = num_iterations
 
+        best_perturbation = None
         if keep_best:
             best_loss_per_example = {i: None for i in xrange(num_examples)}
-            best_perturbation = None
 
         prev_loss = None
 
@@ -361,11 +361,12 @@ class PGD(AdversarialAttack):
                         best_loss_per_example[i] = (iter_no, float(el))
 
                 if best_perturbation is None:
-                    best_perturbation = perturbation
-                else:
-                    best_perturbation = perturbation.merge_perturbation(
+                    best_perturbation = self.threat_model(examples)
+
+                best_perturbation = perturbation.merge_perturbation(
                                                             best_perturbation,
                                                             mask_val)
+
 
             self.validator((best_perturbation or perturbation)(var_examples),
                            var_labels, iter_no=iter_no)
