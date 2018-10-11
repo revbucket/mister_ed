@@ -11,7 +11,7 @@
 """
 
 
-
+from __future__ import print_function
 import torch
 from torch.autograd import Variable
 import utils.pytorch_utils as utils
@@ -293,7 +293,7 @@ class AdversarialEvaluation(object):
             if num_minibatches is not None and i >= num_minibatches:
                 break
             if verbose:
-                print "Starting minibatch %s..." % i
+                print("Starting minibatch %s..." % i)
 
 
             inputs, labels = data
@@ -303,7 +303,7 @@ class AdversarialEvaluation(object):
 
             for k, result in attack_ensemble.items():
                 if verbose:
-                    print "\t (mb: %s) evaluating %s..." % (i, k)
+                    print("\t (mb: %s) evaluating %s..." % (i, k))
                 result.eval(inputs, labels)
 
         return attack_ensemble
@@ -354,7 +354,7 @@ class AdversarialEvaluation(object):
         assert isinstance(data_loader, torch.utils.data.DataLoader)
         if isinstance(data_loader.batch_sampler.sampler,
                       torch.utils.data.sampler.RandomSampler):
-            print "WARNING: data loader is shuffled!"
+            print("WARNING: data loader is shuffled!")
         total_num_minibatches = int(math.ceil(len(data_loader.dataset) /
                                               data_loader.batch_size))
         minibatch_digits = len(str(total_num_minibatches))
@@ -384,15 +384,15 @@ class AdversarialEvaluation(object):
             saved_num_examples = saved_data.shape[0]
             loader_batch_size = data_loader.batch_size
             if saved_num_examples % loader_batch_size != 0:
-                print "WARNING: incomplete minibatch in previously saved attack"
+                print("WARNING: incomplete minibatch in previously saved attack")
 
             minibatch_attacks.append(saved_data)
             num_prev_minibatches = saved_num_examples / loader_batch_size
 
         if verbose:
             def printer(num):
-                print ("Minibatch %%0%dd/%s" % (minibatch_digits,
-                                                   total_num_minibatches) % num)
+                print("Minibatch %%0%dd/%s" % (minibatch_digits,
+                                                  total_num_minibatches) % num)
         else:
             printer = lambda num: None
 

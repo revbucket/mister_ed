@@ -145,7 +145,7 @@ class FullSpatial(ParameterizedTransformation):
 
         def id_builder():
             x = torch.zeros(height, width).type(dtype)
-            for i in xrange(height):
+            for i in range(height):
                 x[i,i] = 1
             return x
 

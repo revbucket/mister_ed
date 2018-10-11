@@ -1,5 +1,5 @@
 """ Contains training code for adversarial training """
-
+from __future__ import print_function
 import torch
 import torchvision
 import torch.cuda as cuda
@@ -76,12 +76,9 @@ class AdversarialAttackParameters(object):
         """
         num_elements = inputs.shape[0]
 
-        # SELECT int(self.proportion_attacked * batch_size)
-        selected_idxs = sorted(random.sample(range(num_elements),
+        selected_idxs = sorted(random.sample(list(range(num_elements)),
                                 int(self.proportion_attacked * num_elements)))
 
-        #selected_idxs = [i for i in xrange(num_elements)
-        #                 if random.random() < self.proportion_attacked]
         selected_idxs = inputs.new(selected_idxs).long()
         if selected_idxs.numel() == 0:
             return (None, None, None)
@@ -406,7 +403,7 @@ class AdversarialTraining(object):
                     # BE SURE TO 'DETACH' THE ADV_INPUTS!!!
                     reg_adv_loss = regularize_adv_criterion(adv_examples,
                                                       Variable(adv_inputs.data))
-                    print float(loss), regularize_adv_scale * float(reg_adv_loss)
+                    print(float(loss), regularize_adv_scale * float(reg_adv_loss))
                     loss = loss + regularize_adv_scale * reg_adv_loss
 
 
@@ -424,7 +421,7 @@ class AdversarialTraining(object):
 
             # end_of_epoch
             if epoch % verbosity_epoch == 0:
-                print "COMPLETED EPOCH %04d... checkpointing here" % epoch
+                print("COMPLETED EPOCH %04d... checkpointing here" % epoch)
                 checkpoints.save_state_dict(self.experiment_name,
                                             self.architecture_name,
                                             epoch, self.classifier_net,
@@ -432,7 +429,7 @@ class AdversarialTraining(object):
 
 
         if verbosity_level >= 1:
-            print 'Finished Training'
+            print('Finished Training')
 
         return
 

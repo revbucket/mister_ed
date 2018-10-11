@@ -1,6 +1,6 @@
 """ Just some utilities for running experiments. Unrelated to pytorch in general
 """
-
+from __future__ import print_function
 import math
 
 def get_midpoint(tuple_1, tuple_2):
@@ -156,11 +156,11 @@ def level_sets_r2(oracle, original_point, discretization, tolerance=0.01,
     #   Build list and return                                                #
     ##########################################################################
     current_list = [original_point, x_axis_point]
-    for disc_step in xrange(discretization):
-        print current_list
-        print '\n'
+    for disc_step in range(discretization):
+        print(current_list)
+        print('\n')
         new_list = []
-        for i in xrange(len(current_list) - 1):
+        for i in range(len(current_list) - 1):
             new_point = recursive_midpoint(current_list[i],
                                            current_list[i + 1])
             new_list.extend([current_list[i], new_point])
@@ -186,14 +186,14 @@ def equidistant_points(point_list, num_intervals):
 
     assert len(point_list) > 1
     total_length = sum(l2_dist(point_list[i], point_list[i + 1])
-                       for i in xrange(len(point_list) - 1))
+                       for i in range(len(point_list) - 1))
 
     interval_length = total_length / num_intervals
 
     remainder = 0
     output_list = [point_list[0]]
     waypoint_idx = 1
-    for i in xrange(num_intervals + 1):
+    for i in range(num_intervals + 1):
         dist_to_go = interval_length
         not_satisfied = True
 
@@ -213,9 +213,9 @@ def equidistant_points(point_list, num_intervals):
                 startpoint = point_list[waypoint_idx - 1]
 
                 direction = tuple((endpoint[i] - startpoint[i]) / segment_length
-                                  for i in xrange(len(endpoint)))
+                                  for i in range(len(endpoint)))
                 equipoint = tuple((dist_to_go + remainder) * direction[i] +
-                                  startpoint[i] for i in xrange(len(startpoint))
+                                  startpoint[i] for i in range(len(startpoint))
                                  )
                 output_list.append(equipoint)
                 remainder += dist_to_go

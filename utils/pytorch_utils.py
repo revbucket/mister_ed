@@ -210,13 +210,13 @@ def batchwise_norm(examples, lp, dim=0):
         examples = examples.transpose(dim, 0)
 
     if lp == 'inf':
-        for reduction in xrange(1, example_dim):
+        for reduction in range(1, example_dim):
             examples, _ = examples.max(1)
         return examples
 
     else:
         examples = torch.pow(examples + 1e-10, lp)
-        for reduction in xrange(1, example_dim):
+        for reduction in range(1, example_dim):
             examples = examples.sum(1)
         return torch.pow(examples, 1.0 / lp)
 

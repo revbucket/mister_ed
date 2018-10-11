@@ -11,7 +11,8 @@
 #                       STEP ONE: DEPENDENCIES ARE INSTALLED                 #
 #                                                                            #
 ##############################################################################
-print "Checking imports..."
+from __future__ import print_function
+print("Checking imports...")
 import sys
 import os
 sys.path.append(os.path.abspath(os.path.split(os.path.split(__file__)[0])[0]))
@@ -24,7 +25,7 @@ import config
 import torchvision.datasets as datasets
 import urllib2
 import hashlib
-print "...imports look okay!"
+print("...imports look okay!")
 
 
 ##############################################################################
@@ -34,13 +35,13 @@ print "...imports look okay!"
 ##############################################################################
 
 def check_cifar_data_loaded():
-    print "Checking CIFAR10 data loaded..."
+    print("Checking CIFAR10 data loaded...")
     dataset_dir = config.DEFAULT_DATASETS_DIR
 
     train_set = datasets.CIFAR10(root=dataset_dir, train=True, download=True)
     val_set = datasets.CIFAR10(root=dataset_dir, train=False, download=True)
 
-    print "...CIFAR10 data looks okay!"
+    print("...CIFAR10 data looks okay!")
 
 
 check_cifar_data_loaded()
@@ -63,7 +64,7 @@ def file_hash(filename):
 
 
 def load_cifar_classifiers():
-    print "Checking CIFAR10 classifier exists..."
+    print("Checking CIFAR10 classifier exists...")
 
     # NOTE: pretrained models are produced by Yerlan Idelbayev
     # https://github.com/akamaster/pytorch_resnet_cifar10
@@ -106,7 +107,7 @@ def load_cifar_classifiers():
 
     for name in lacking_models:
         link = LINK_DEPOT[name]
-        print "Downloading %s..." % name
+        print("Downloading %s..." % name)
         u = urllib2.urlopen(link)
         data = u.read()
         u.close()
@@ -117,19 +118,19 @@ def load_cifar_classifiers():
         try:
             assert file_hash(filename) == HASH_DEPOT[name]
         except AssertionError, err:
-            print "Something went wrong downloading %s" % name
+            print("Something went wrong downloading %s" % name)
             os.remove(filename)
             raise err
 
     # Then load up all that doesn't already exist
 
-    print "...CIFAR10 classifier looks okay"
+    print("...CIFAR10 classifier looks okay")
 
 
 
 load_cifar_classifiers()
 
 
-print "\n Okay, you should be good to go now! "
-print "Try running tutorial_{1,2,3}.ipynb in notebooks/"
+print("\n Okay, you should be good to go now! ")
+print("Try running tutorial_{1,2,3}.ipynb in notebooks/")
 

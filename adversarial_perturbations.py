@@ -698,7 +698,7 @@ class SequentialPerturbation(AdversarialPerturbation):
             return self.norm(self.pipeline, x=x, lp_style=lp_style)
         else:
             norm_weights = self.norm_weights or\
-                              [1.0 for _ in xrange(len(self.pipeline))]
+                              [1.0 for _ in range(len(self.pipeline))]
             out = None
             for i, layer in enumerate(self.pipeline):
                 weight = norm_weights[i]

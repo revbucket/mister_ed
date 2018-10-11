@@ -109,7 +109,7 @@ class PNetLin(nn.Module):
 
     def forward(self, in0, in1):
 
-        # normalize        
+        # normalize
         in0_sc = (in0 - self.shift.expand_as(in0))/self.scale.expand_as(in0)
         in1_sc = (in1 - self.shift.expand_as(in0))/self.scale.expand_as(in0)
 
@@ -123,13 +123,13 @@ class PNetLin(nn.Module):
 
 
         diffs = []
-        for kk in xrange(len(outs0)):
+        for kk in range(len(outs0)):
             normed_0 = normalize_tensor(outs0[kk])
             normed_1 = normalize_tensor(outs1[kk])
             diffs.append((normed_0 - normed_1) ** 2)
 
         val = 0
-        for i in xrange(len(self.lins)):
+        for i in range(len(self.lins)):
             val = val + torch.mean(
                             torch.mean(self.lins[i].model(diffs[i]), dim=3),
                             dim=2)

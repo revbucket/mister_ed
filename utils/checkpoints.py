@@ -12,6 +12,7 @@ Checkpoints are state dicts only!!!
 """
 
 import torch
+import math
 import os
 import re
 import glob
@@ -284,7 +285,7 @@ class CustomDataLoader(object):
             merged_labels = np.concatenate(running_labels, axis=0)
 
             # Make minibatches out of concatenated things,
-            for batch_no in xrange(running_size / self.batch_size):
+            for batch_no in range(running_size // self.batch_size):
                 index_lo = batch_no * self.batch_size
                 index_hi = index_lo + self.batch_size
                 example_batch = merged_examples[index_lo:index_hi]
@@ -292,7 +293,7 @@ class CustomDataLoader(object):
                 yield self._prepare_data(example_batch, label_batch)
 
             # Handle any remainder for remaining files
-            remainder_idx = (running_size / self.batch_size) * self.batch_size
+            remainder_idx = (running_size // self.batch_size) * self.batch_size
             running_examples = [merged_examples[remainder_idx:]]
             running_labels = [merged_labels[remainder_idx:]]
             running_size = running_size - remainder_idx

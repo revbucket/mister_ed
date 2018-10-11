@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 """ Main file that I'll run for experiments and such. VERY VOLATILE!!! """
+from __future__ import print_function
 import os
 import torch
 import torch.nn as nn
@@ -90,9 +91,9 @@ def main_attack_script(attack_examples=None,
         fgsm_accuracy = fgsm_attack_obj.eval(fgsm_original_images,
                                              fgsm_adv_images,
                                              fgsm_original_labels)
-        print "FGSM ATTACK ACCURACY: "
-        print "\t Original %% correct:    %s" % fgsm_accuracy[0]
-        print "\t Adversarial %% correct: %s" % fgsm_accuracy[1]
+        print("FGSM ATTACK ACCURACY: ")
+        print("\t Original %% correct:    %s" % fgsm_accuracy[0])
+        print("\t Adversarial %% correct: %s" % fgsm_accuracy[1])
 
         if show_images:
             img_utils.display_adversarial_2row(classifier_net, cifar_normer,
@@ -136,9 +137,9 @@ def main_attack_script(attack_examples=None,
         bim_accuracy = bim_attack_obj.eval(bim_original_images,
                                            bim_adv_images,
                                            bim_original_labels)
-        print "BIM ATTACK ACCURACY: "
-        print "\t Original %% correct:    %s" % bim_accuracy[0]
-        print "\t Adversarial %% correct: %s" % bim_accuracy[1]
+        print("BIM ATTACK ACCURACY: ")
+        print("\t Original %% correct:    %s" % bim_accuracy[0])
+        print("\t Adversarial %% correct: %s" % bim_accuracy[1])
 
         if show_images:
             img_utils.display_adversarial_2row(classifier_net, cifar_normer,
@@ -181,9 +182,9 @@ def main_attack_script(attack_examples=None,
         pgd_accuracy = pgd_attack_obj.eval(pgd_original_images,
                                            pgd_adv_images,
                                            pgd_original_labels)
-        print "PGD ATTACK ACCURACY: "
-        print "\t Original %% correct:    %s" % pgd_accuracy[0]
-        print "\t Adversarial %% correct: %s" % pgd_accuracy[1]
+        print("PGD ATTACK ACCURACY: ")
+        print("\t Original %% correct:    %s" % pgd_accuracy[0])
+        print("\t Adversarial %% correct: %s" % pgd_accuracy[1])
 
         if show_images:
             img_utils.display_adversarial_2row(classifier_net, cifar_normer,
@@ -227,16 +228,16 @@ def main_attack_script(attack_examples=None,
         cwl2_output = cwl2_obj.attack(ex_minibatch, ex_targets,
                                       verbose=True)
 
-        print cwl2_output['best_dist']
+        print(cwl2_output['best_dist'])
         cwl2_adv_images = cwl2_output['best_adv_images']
 
 
         cwl2_accuracy = cwl2_obj.eval(cwl2_original_images,
                                       cwl2_adv_images,
                                       cwl2_original_labels)
-        print "CWL2 ATTACK ACCURACY: "
-        print "\t Original %% correct:    %s" % cwl2_accuracy[0]
-        print "\t Adversarial %% correct: %s" % cwl2_accuracy[1]
+        print("CWL2 ATTACK ACCURACY: ")
+        print("\t Original %% correct:    %s" % cwl2_accuracy[0])
+        print("\t Adversarial %% correct: %s" % cwl2_accuracy[1])
 
         if show_images:
             img_utils.display_adversarial_2row(classifier_net, cifar_normer,
@@ -281,16 +282,16 @@ def main_attack_script(attack_examples=None,
         cwlinf_output = cwlinf_obj.attack(ex_minibatch, ex_targets,
                                       verbose=True)
 
-        print cwlinf_output['best_dist'] * 255.0
+        print(cwlinf_output['best_dist'] * 255.0)
         cwlinf_adv_images = cwlinf_output['best_adv_images']
 
 
         cwlinf_accuracy = cwlinf_obj.eval(cwlinf_original_images,
                                           cwlinf_adv_images,
                                           cwlinf_original_labels)
-        print "CWLinf ATTACK ACCURACY: "
-        print "\t Original %% correct:    %s" % cwlinf_accuracy[0]
-        print "\t Adversarial %% correct: %s" % cwlinf_accuracy[1]
+        print("CWLinf ATTACK ACCURACY: ")
+        print("\t Original %% correct:    %s" % cwlinf_accuracy[0])
+        print("\t Adversarial %% correct: %s" % cwlinf_accuracy[1])
 
         if show_images:
             img_utils.display_adversarial_2row(classifier_net, cifar_normer,

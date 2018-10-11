@@ -1,6 +1,7 @@
 """ Specific utilities for image classification
     (i.e. RGB images i.e. tensors of the form NxCxHxW )
 """
+from __future__ import print_function
 import utils.pytorch_utils as utils
 import torch
 import numpy as np
@@ -66,13 +67,13 @@ def show_images(images, normalize=None, ipython=True,
         rows.append(image_row)
 
     rows = [_ for _ in rows[1:] if _ is not None]
-    plt.figure(figsize=figsize, dpi=80, facecolor='w', edgecolor='k')    
+    plt.figure(figsize=figsize, dpi=80, facecolor='w', edgecolor='k')
     plt.imshow(np.concatenate(rows, 1).transpose(1, 2, 0))
     if save_npy is not None:
 
         scipy.misc.toimage(np.concatenate(rows, 1).transpose(1, 2, 0),
                            cmin=0.0, cmax=1.0).save(save_npy)
-        
+
 
     plt.show()
 
@@ -132,11 +133,11 @@ def display_adversarial_2row(classifier_net, normalizer, original_images,
             if selector(var_el):
                 to_sample_idxs.append(idx)
     else:
-        to_sample_idxs = range(original_images.shape[0])
+        to_sample_idxs = list(range(original_images.shape[0]))
 
     # Now select some indices to show
     if to_sample_idxs == []:
-        print "Couldn't show anything. Try changing the 'which' argument here"
+        print("Couldn't show anything. Try changing the 'which' argument here")
         return
 
     to_show_idxs = random.sample(to_sample_idxs, min([num_to_show,
@@ -175,7 +176,7 @@ def nchw_l2(x, y, squared=True):
     temp = torch.pow(x - y, 2) # square diff
 
 
-    for i in xrange(1, temp.dim()): # reduce on all but first dimension
+    for i in range(1, temp.dim()): # reduce on all but first dimension
         temp = torch.sum(temp, i, keepdim=True)
 
     if not squared:

@@ -135,7 +135,7 @@ def discretized_adversarial(img_tensor, classifier_net, normalizer,
     # Stack up results
     output = []
 
-    for idx in xrange(len(img_tensor)):
+    for idx in range(len(img_tensor)):
         if idx in incorrect_idxs:
             output.append(corrected_imgs.pop(0))
         else:

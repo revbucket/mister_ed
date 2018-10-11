@@ -72,7 +72,7 @@ class RegularizedLoss(object):
             fix_im: Variable (NxCxHxW) - Ground images for this minibatch
                     SHOULD BE IN [0.0, 1.0] RANGE
         """
-        for loss in self.losses.itervalues():
+        for loss in self.losses.values():
             if isinstance(loss, ReferenceRegularizer):
                 loss.setup_attack_batch(fix_im)
             else:
@@ -86,7 +86,7 @@ class RegularizedLoss(object):
         - clears example-based scalars (i.e. scalars that depend on which
           example we're using)
         """
-        for loss in self.losses.itervalues():
+        for loss in self.losses.values():
             if isinstance(loss, ReferenceRegularizer):
                 loss.cleanup_attack_batch()
             else:
@@ -98,7 +98,7 @@ class RegularizedLoss(object):
 
 
     def zero_grad(self):
-        for loss in self.losses.itervalues():
+        for loss in self.losses.values():
             loss.zero_grad() # probably zeros the same net more than once...
 
 
@@ -478,7 +478,7 @@ class CombinedTransformerLoss(ReferenceRegularizer):
         #####################################################################
         #   Iterate and optimize the transformer                            #
         #####################################################################
-        for iter_no in xrange(num_iter):
+        for iter_no in range(num_iter):
             optimizer.zero_grad()
             loss = self._inner_loss(examples)
             loss.backward()
