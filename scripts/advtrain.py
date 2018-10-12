@@ -72,26 +72,25 @@ FLOW_LINF_BOUND = 0.05
 
 
 # FGSM ONLY
-def build_fgsm_attack(classifier_net, normalizer, use_gpu):
+def build_fgsm_attack(classifier_net, normalizer):
     delta_threat = ap.ThreatModel(ap.DeltaAddition,
                                   ap.PerturbationParameters(lp_style='inf',
-                                                            lp_bound=L_INF_BOUND,
-                                                            use_gpu=use_gpu))
+                                                            lp_bound=L_INF_BOUND))
     attack_loss = plf.VanillaXentropy(classifier_net, normalizer)
     fgsm_attack = aar.FGSM(classifier_net, cifar_normer, delta_threat,
-                           attack_loss, use_gpu=use_gpu)
+                           attack_loss)
     attack_kwargs = {'verbose': GLOBAL_ATK_KWARGS['verbose']}
     params = advtrain.AdversarialAttackParameters(fgsm_attack, 1.0,
                                        attack_specific_params={'attack_kwargs': attack_kwargs})
     return params
 
 # STANDARD PGD LINF ATTACK
-def build_pgd_linf_attack(classifier_net, normalizer, use_gpu):
+def build_pgd_linf_attack(classifier_net, normalizer):
     # PREBUILT LOSS FUNCTION
     delta_threat = ap.ThreatModel(ap.DeltaAddition,
                                   ap.PerturbationParameters(lp_style='inf',
                                                             lp_bound=L_INF_BOUND,
-                                                            use_gpu=use_gpu))
+                                                            ))
     attack_loss = plf.VanillaXentropy(classifier_net, normalizer=normalizer)
     pgd_attack = aar.PGD(classifier_net, normalizer, delta_threat, attack_loss)
     pgd_kwargs = copy.deepcopy(GLOBAL_ATK_KWARGS)
@@ -101,16 +100,14 @@ def build_pgd_linf_attack(classifier_net, normalizer, use_gpu):
 
 
 # LINF + STADV
-def build_pgd_linf_stadv_att(classifier_net, normalizer, use_gpu):
+def build_pgd_linf_stadv_att(classifier_net, normalizer):
     delta_threat = ap.ThreatModel(ap.DeltaAddition,
                                   ap.PerturbationParameters(lp_style='inf',
-                                                            lp_bound=L_INF_BOUND,
-                                                            use_gpu=use_gpu))
+                                                            lp_bound=L_INF_BOUND))
     flow_threat = ap.ThreatModel(ap.ParameterizedXformAdv,
                                  ap.PerturbationParameters(lp_style='inf',
                                                            lp_bound=FLOW_LINF_BOUND,
                                                            xform_class=st.FullSpatial,
-                                                           use_gpu=use_gpu,
                                                            use_stadv=True))
     sequence_threat = ap.ThreatModel(ap.SequentialPerturbation,
                                  [delta_threat, flow_threat],
@@ -132,12 +129,11 @@ def build_pgd_linf_stadv_att(classifier_net, normalizer, use_gpu):
 
 
 # STADV ATTACK
-def build_stadv_linf_attack(classifier_net, normalizer, use_gpu):
+def build_stadv_linf_attack(classifier_net, normalizer):
     flow_threat = ap.ThreatModel(ap.ParameterizedXformAdv,
                                  ap.PerturbationParameters(lp_style='inf',
                                                            lp_bound=FLOW_LINF_BOUND,
                                                            xform_class=st.FullSpatial,
-                                                           use_gpu=use_gpu,
                                                            use_stadv=True))
     adv_loss = lf.CWLossF6(classifier_net, normalizer)
     st_loss = lf.PerturbationNormLoss(lp=2)
@@ -156,22 +152,22 @@ def build_stadv_linf_attack(classifier_net, normalizer, use_gpu):
 
 
 # Delta + R + T ATTACK
-def build_rotation_translation_attack(classifier_net, normalizer, use_gpu):
+def build_rotation_translation_attack(classifier_net, normalizer):
     # L_inf + flow style attack
     delta_threat = ap.ThreatModel(ap.DeltaAddition,
                                   ap.PerturbationParameters(lp_style='inf',
                                                             lp_bound=L_INF_BOUND,
-                                                            use_gpu=use_gpu))
+                                                            ))
 
     trans_threat = ap.ThreatModel(ap.ParameterizedXformAdv,
                                   ap.PerturbationParameters(lp_style=1,
                                                             lp_bound=0.05,
                                                             xform_class=st.TranslationTransform,
-                                                            use_gpu=use_gpu))
+                                                            ))
     rotation_threat = ap.ThreatModel(ap.ParameterizedXformAdv,
                                      ap.PerturbationParameters(xform_class=st.RotationTransform,
                                                               lp_style='inf', lp_bound=math.pi / 24.,
-                                                              use_gpu=use_gpu))
+                                                              ))
 
     sequence_threat = ap.ThreatModel(ap.SequentialPerturbation,
                                  [delta_threat, trans_threat, rotation_threat])
@@ -180,7 +176,7 @@ def build_rotation_translation_attack(classifier_net, normalizer, use_gpu):
 
     loss_fxn = plf.VanillaXentropy(classifier_net, normalizer)
     pgd_attack = aar.PGD(classifier_net, normalizer, sequence_threat,
-                         loss_fxn, use_gpu=use_gpu)
+                         loss_fxn)
 
     params = advtrain.AdversarialAttackParameters(pgd_attack, 1.0,
                                        attack_specific_params={'attack_kwargs': pgd_kwargs})
@@ -188,29 +184,28 @@ def build_rotation_translation_attack(classifier_net, normalizer, use_gpu):
 
 
 
-def build_full_attack(classifier_net, normalizer, use_gpu):
+def build_full_attack(classifier_net, normalizer):
     # L_inf + flow style attack
     delta_threat = ap.ThreatModel(ap.DeltaAddition,
                                   ap.PerturbationParameters(lp_style='inf',
                                                             lp_bound=L_INF_BOUND,
-                                                            use_gpu=use_gpu))
+                                                            ))
 
     trans_threat = ap.ThreatModel(ap.ParameterizedXformAdv,
                                   ap.PerturbationParameters(lp_style=1,
                                                             lp_bound=0.05,
                                                             xform_class=st.TranslationTransform,
-                                                            use_gpu=use_gpu))
+                                                            ))
     flow_threat = ap.ThreatModel(ap.ParameterizedXformAdv,
                                  ap.PerturbationParameters(lp_style='inf',
                                                            lp_bound=FLOW_LINF_BOUND,
                                                            xform_class=st.FullSpatial,
-                                                           use_gpu=use_gpu,
                                                            use_stadv=True))
 
     rotation_threat = ap.ThreatModel(ap.ParameterizedXformAdv,
                                      ap.PerturbationParameters(xform_class=st.RotationTransform,
                                                               lp_style='inf', lp_bound=math.pi / 24.,
-                                                              use_gpu=use_gpu))
+                                                              ))
 
     sequence_threat = ap.ThreatModel(ap.SequentialPerturbation,
                                  [delta_threat, flow_threat, trans_threat, rotation_threat],
@@ -226,7 +221,7 @@ def build_full_attack(classifier_net, normalizer, use_gpu):
                                   negate=True)
 
     pgd_attack = aar.PGD(classifier_net, normalizer, sequence_threat,
-                         loss_fxn, use_gpu=use_gpu)
+                         loss_fxn)
 
     params = advtrain.AdversarialAttackParameters(pgd_attack, 1.0,
                                        attack_specific_params={'attack_kwargs': pgd_kwargs})
@@ -234,8 +229,8 @@ def build_full_attack(classifier_net, normalizer, use_gpu):
 
 
 
-def build_attack_params(classifier_net, normalizer, use_gpu):
-    return build_pgd_linf_attack(classifier_net, normalizer, use_gpu)
+def build_attack_params(classifier_net, normalizer):
+    return build_pgd_linf_attack(classifier_net, normalizer)
 
 
 ##############################################################################
@@ -246,7 +241,6 @@ def build_attack_params(classifier_net, normalizer, use_gpu):
 
 def main(architecture_name, experiment_name, num_epochs, batch_size=128,
          resume=False, verbosity='high'):
-    use_gpu = torch.cuda.is_available()
     validate_architecture(architecture_name)
     validate_filenaming(experiment_name)
 
@@ -258,18 +252,15 @@ def main(architecture_name, experiment_name, num_epochs, batch_size=128,
     if architecture_name.startswith('resnet'):
         flavor = int(re.sub('^resnet', '', architecture_name))
         model, normalizer = cl.load_pretrained_cifar_resnet(flavor=flavor,
-                                                            use_gpu=use_gpu,
                                                         return_normalizer=True)
 
     elif architecture_name.startswith('wide-resnet'):
         model, normalizer = cl.load_pretrained_cifar_wide_resnet(
-                                                                use_gpu=use_gpu,
                                                          return_normalizer=True)
     else:
         raise Exception("INVALID ARCHITECTURE")
 
-    cifar_dataset = cl.load_cifar_data('train', batch_size=batch_size,
-                                       use_gpu=use_gpu)
+    cifar_dataset = cl.load_cifar_data('train', batch_size=batch_size)
 
     #########################################################################
     #   Build the training object + Train                                   #
@@ -284,11 +275,11 @@ def main(architecture_name, experiment_name, num_epochs, batch_size=128,
         train_fxn = train_obj.train
 
 
-    attack_params = build_attack_params(model, normalizer, use_gpu)
+    attack_params = build_attack_params(model, normalizer)
     criterion = nn.CrossEntropyLoss()
     train_fxn(cifar_dataset, num_epochs, criterion,
               attack_parameters=attack_params,
-              use_gpu=use_gpu, verbosity=verbosity)
+              verbosity=verbosity)
 
 
 ##############################################################################

@@ -22,9 +22,9 @@ class PerceptualXentropy(lf.RegularizedLoss):
     """ Xentropy loss with a regularization based on perceptual distance """
 
     def __init__(self, classifier, normalizer=None,
-                 regularization_constant=-100.0, use_gpu=False):
+                 regularization_constant=-100.0, manual_gpu=None):
         partial_xentropy = lf.PartialXentropy(classifier, normalizer=normalizer)
-        lpips_reg = lf.LpipsRegularization(None, use_gpu=use_gpu)
+        lpips_reg = lf.LpipsRegularization(None, manual_gpu=manual_gpu)
 
         super(PerceptualXentropy, self).__init__({'xentropy': partial_xentropy,
                                                   'lpips_reg': lpips_reg},
@@ -136,14 +136,14 @@ class CWLpipsLoss(lf.RegularizedLoss):
             LPIPS_DIST(input, original) + scale_constant * f6(examples, labels)
     """
 
-    def __init__(self, classifier, normalizer, kappa=0.0, use_gpu=False):
+    def __init__(self, classifier, normalizer, kappa=0.0, manual_gpu=None):
 
         # build F6 component
         f6_component = lf.CWLossF6(classifier, normalizer=normalizer,
                                    kappa=kappa)
 
         # build L2 regularization component
-        lpips_reg = lf.LpipsRegularization(None, use_gpu=use_gpu)
+        lpips_reg = lf.LpipsRegularization(None, manual_gpu=manual_gpu)
 
         super(CWLpipsLoss, self).__init__({'f6': f6_component,
                                            'lpips_reg': lpips_reg},
@@ -174,7 +174,7 @@ class CWTransformerLoss(lf.RegularizedLoss):
     """
 
     def __init__(self, classifier, normalizer, transformation_scalar,
-                 kappa=0.0, use_gpu=False):
+                 kappa=0.0):
         # build f6 component
         f6_component = lf.CWLossF6(classifier, normalizer, kappa=kappa)
 
@@ -209,7 +209,7 @@ class CWRelaxedTransformerLoss(lf.RegularizedLoss):
     """
 
     def __init__(self, classifier, normalizer, transformation_scalar,
-                 kappa=0.0, use_gpu=False):
+                 kappa=0.0):
         # build f6 component
         f6_component = lf.CWLossF6(classifier, normalizer, kappa=kappa)
 

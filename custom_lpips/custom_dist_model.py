@@ -2,6 +2,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.init as init
+import utils.pytorch_utils as utils
 from collections import namedtuple
 
 from torchvision import models
@@ -66,12 +67,13 @@ class alexnet(torch.nn.Module):
 # Learned perceptual metric
 class PNetLin(nn.Module):
     def __init__(self, pnet_tune=False, use_dropout=False,
-                 use_gpu=True):
+                 manual_gpu=None):
 
         # HACKETY HACK -- MJ modified this file
         super(PNetLin, self).__init__()
         net_type = alexnet # ADD FREEDOM HERE LATER
-        self.use_gpu = use_gpu
+
+
         self.pnet_tune = pnet_tune
         self.chns = [64,192,384,256,256]
         if self.pnet_tune:
@@ -93,6 +95,10 @@ class PNetLin(nn.Module):
         self.scale = torch.autograd.Variable(torch.Tensor([.458, .448, .450]).view(1,3,1,1))
 
         # cuda all the things
+        if manual_gpu is not None:
+            self.use_gpu = manual_gpu
+        else:
+            self.use_gpu = utils.use_gpu()
         if self.use_gpu:
             if self.pnet_tune:
                 self.net.cuda()
@@ -166,16 +172,16 @@ def normalize_tensor(in_feat,eps=1e-10):
 
 class DistModel(BaseModel):
 
-    def __init__(self, net='squeeze', use_gpu=True):
+    def __init__(self, net='squeeze', manual_gpu=None):
 
-        super(DistModel, self).__init__(use_gpu=use_gpu)
+        super(DistModel, self).__init__(manual_gpu=manual_gpu)
 
         if self.use_gpu:
             self.map_location = None
         else:
             self.map_location = lambda storage, loc: storage
 
-        self.net = PNetLin(use_gpu=use_gpu, pnet_tune=False,
+        self.net = PNetLin(manual_gpu=manual_gpu, pnet_tune=False,
                            use_dropout=True)
         weight_path =  os.path.join(os.path.dirname(__file__), 'weights',
                                     '%s.pth' % net)

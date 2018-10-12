@@ -152,7 +152,8 @@ class AdversarialTraining(object):
     """
 
     def __init__(self, classifier_net, normalizer,
-                 experiment_name, architecture_name):
+                 experiment_name, architecture_name,
+                 manual_gpu=None):
 
         """
         ARGS:
@@ -160,7 +161,11 @@ class AdversarialTraining(object):
                          images. Can have already be trained, or not
         normalizer : DifferentiableNormalize - object to convert to zero-mean
                      unit-variance domain
-        experiment_name : String - na
+        experiment_name : String - human-readable name of the 'trained_model'
+                          (this is helpful for identifying checkpoints later)
+        manual_gpu : None or bool - if not None is a manual override of whether
+                     or not to use the GPU. If left None, we use the GPU if we
+                     can
 
         ON NOMENCLATURE:
         Depending on verbosity levels, training checkpoints are saved after
@@ -177,6 +182,10 @@ class AdversarialTraining(object):
         self.architecture_name = architecture_name
 
 
+        if manual_gpu is not None:
+            self.use_gpu = manual_gpu
+        else:
+            self.use_gpu = utils.use_gpu()
 
         self.verbosity_level = None
         self.verbosity_minibatch = None
@@ -284,7 +293,7 @@ class AdversarialTraining(object):
 
 
     def train(self, data_loader, num_epochs, train_loss,
-              optimizer=None, attack_parameters=None, use_gpu=False,
+              optimizer=None, attack_parameters=None,
               verbosity='medium', starting_epoch=0, adversarial_save_dir=None,
               regularize_adv_scale=None):
         """ Modifies the NN weights of self.classifier_net by training with
@@ -303,7 +312,6 @@ class AdversarialTraining(object):
                                 if not None, is either an object or list of
                                 objects containing info on how to do adv
                                 attacks. If None, we don't train adversarially
-            use_gpu : bool - if True, we use GPU's for things
             verbosity : string - must be 'low', 'medium', 'high', which
                         describes how much to print
             starting_epoch : int - which epoch number we start on. Is useful
@@ -342,12 +350,12 @@ class AdversarialTraining(object):
                         self.classifier_net)
 
 
-        assert not (use_gpu and not cuda.is_available())
-        if use_gpu:
+        assert not (self.use_gpu and not cuda.is_available())
+        if self.use_gpu:
             self.classifier_net.cuda()
         if attack_parameters is not None:
             for param in attack_parameters:
-                param.set_gpu(use_gpu)
+                param.set_gpu(self.use_gpu)
 
         # Verbosity parameters
         assert verbosity in ['low', 'medium', 'high', 'snoop', None]
@@ -378,7 +386,7 @@ class AdversarialTraining(object):
             running_loss = 0.0
             for i, data in enumerate(data_loader, 0):
                 inputs, labels = data
-                if use_gpu:
+                if self.use_gpu:
                     inputs = inputs.cuda()
                     labels = labels.cuda()
 
@@ -436,7 +444,7 @@ class AdversarialTraining(object):
 
     def train_from_checkpoint(self, data_loader, num_epochs, loss_fxn,
                               optimizer=None, attack_parameters=None,
-                              use_gpu=False, verbosity='medium',
+                              verbosity='medium',
                               starting_epoch='max',
                               adversarial_save_dir=None):
         """ Resumes training from a saved checkpoint with the same architecture.
@@ -479,7 +487,6 @@ class AdversarialTraining(object):
         self.train(data_loader, num_epochs, loss_fxn,
                    optimizer=optimizer,
                    attack_parameters=attack_parameters,
-                   use_gpu=use_gpu,
                    verbosity=verbosity,
                    starting_epoch=epoch,
                    adversarial_save_dir=adversarial_save_dir)

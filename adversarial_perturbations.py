@@ -364,6 +364,10 @@ class PerturbationParameters(dict):
     """
     def __init__(self, *args, **kwargs):
         super(PerturbationParameters, self).__init__(*args, **kwargs)
+        if kwargs.get('manual_gpu') is not None:
+            self.use_gpu = kwargs['manual_gpu']
+        else:
+            self.use_gpu = utils.use_gpu()
         self.__dict__ = self
 
     def __getattribute__(self, name):
@@ -549,7 +553,7 @@ class ParameterizedXformAdv(AdversarialPerturbation):
     def setup(self, originals):
         super(ParameterizedXformAdv, self).setup(originals)
         self.xform = self.perturbation_params.xform_class(shape=originals.shape,
-                                                          use_gpu=self.use_gpu)
+                                                        manual_gpu=self.use_gpu)
         self.initialized = True
 
     @initialized

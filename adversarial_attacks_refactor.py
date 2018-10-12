@@ -19,7 +19,7 @@ MAXFLOAT = 1e20
 
 
 ###############################################################################
-#                                                                             #
+#                                                                              #
 #                      PARENT CLASS FOR ADVERSARIAL ATTACKS                   #
 #                                                                             #
 ###############################################################################
@@ -29,7 +29,8 @@ class AdversarialAttack(object):
         are needed.
     """
 
-    def __init__(self, classifier_net, normalizer, threat_model, use_gpu=False):
+    def __init__(self, classifier_net, normalizer, threat_model,
+                 manual_gpu=None):
         """ Initializes things to hold to perform a single batch of
             adversarial attacks
         ARGS:
@@ -39,10 +40,17 @@ class AdversarialAttack(object):
                          input data to mean-zero, unit-var examples
             threat_model : ThreatModel object - object that allows us to create
                            per-minibatch adversarial examples
+            manual_gpu : None or boolean - if not None, we override the
+                         environment variable 'MISTER_ED_GPU' for how we use
+                         the GPU in this object
+
         """
         self.classifier_net = classifier_net
         self.normalizer = normalizer or utils.IdentityNormalize()
-        self.use_gpu = use_gpu
+        if manual_gpu is not None:
+            self.use_gpu = manual_gpu
+        else:
+            self.use_gpu = utils.use_gpu()
         self.validator = lambda *args: None
         self.threat_model = threat_model
 
@@ -169,10 +177,11 @@ class AdversarialAttack(object):
 
 class FGSM(AdversarialAttack):
     def __init__(self, classifier_net, normalizer, threat_model, loss_fxn,
-                 use_gpu=False):
+                 manual_gpu=None):
         super(FGSM, self).__init__(classifier_net, normalizer, threat_model,
-                                   use_gpu=use_gpu)
+                                   manual_gpu=manual_gpu)
         self.loss_fxn = loss_fxn
+
 
     def attack(self, examples, labels, step_size=0.05, verbose=True):
 
@@ -243,9 +252,9 @@ class FGSM(AdversarialAttack):
 class PGD(AdversarialAttack):
 
     def __init__(self, classifier_net, normalizer, threat_model, loss_fxn,
-                 use_gpu=False):
+                 manual_gpu=None):
         super(PGD, self).__init__(classifier_net, normalizer, threat_model,
-                                  use_gpu=use_gpu)
+                                  manual_gpu=manual_gpu)
         self.loss_fxn = loss_fxn # WE MAXIMIZE THIS!!!
 
     def attack(self, examples, labels, step_size=1.0/255.0,
@@ -418,7 +427,7 @@ needs to be differentiable. It does not need to be a true distance metric tho
 class CarliniWagner(AdversarialAttack):
 
     def __init__(self, classifier_net, normalizer, threat_model,
-                 distance_fxn, carlini_loss, use_gpu=False):
+                 distance_fxn, carlini_loss, manual_gpu=None):
         """ This is a different init than the other style attacks because the
             loss function is separated into two arguments here
         ARGS:
@@ -435,7 +444,7 @@ class CarliniWagner(AdversarialAttack):
                           returns zero when the images are adversarial
         """
         super(CarliniWagner, self).__init__(classifier_net, normalizer,
-                                            threat_model, use_gpu=use_gpu)
+                                            threat_model, manual_gpu=manual_gpu)
 
 
         assert issubclass(distance_fxn, lf.ReferenceRegularizer)

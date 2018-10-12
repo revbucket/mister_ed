@@ -1,17 +1,24 @@
 import os
+import utils.pytorch_utils as utils
 import torch
 
 class BaseModel(object):
-    def __init__(self, use_gpu=True):
-        self.use_gpu = use_gpu
+    def __init__(self, manual_gpu=None):
+        if manual_gpu is not None:
+            self.use_gpu = manual_gpu
+        else:
+            self.use_gpu = utils.use_gpu()
         self.Tensor = torch.cuda.FloatTensor if self.use_gpu else torch.Tensor
 
 
     def name(self):
         return 'BaseModel'
 
-    def initialize(self, use_gpu=True):
-        self.use_gpu = use_gpu
+    def initialize(self, manual_gpu=None):
+        if manual_gpu is not None:
+            self.use_gpu = manual_gpu
+        else:
+            self.use_gpu = utils.use_gpu()
         self.Tensor = torch.cuda.FloatTensor if self.use_gpu else torch.Tensor
         # self.save_dir = os.path.join(opt.checkpoints_dir, opt.name)
 

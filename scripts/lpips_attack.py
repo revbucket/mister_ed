@@ -49,7 +49,7 @@ import checkpoints
 
 
 # Block 0: load dataset, normalizer, adversarially trained net
-val_loader = cifar_loader.load_cifar_data('val', normalize=False, batch_size=8, use_gpu=True)
+val_loader = cifar_loader.load_cifar_data('val', normalize=False, batch_size=8)
 
 cifar_normer = utils.DifferentiableNormalize(mean=config.CIFAR10_MEANS,
                                            std=config.CIFAR10_STDS)
@@ -76,14 +76,13 @@ def build_attack_loss(classifier, normalizer, lpips_penalty):
     XEntropy(perturbed_examples, labels) + hyperparam * LPIPS(examples, perturbed_examples)
     """
     return plf.PerceptualXentropy(classifier, normalizer=normalizer,
-                                  regularization_constant=lpips_penalty,
-                                  use_gpu=True)
+                                  regularization_constant=lpips_penalty)
 
 attack_params = {}
 penalties = [0.01, 0.1, 1.0, 10.0, 100.0]
 for penalty in penalties:
     loss_obj = build_attack_loss(adv_trained_net, cifar_normer, penalty)
-    attack_obj = aa.LInfPGD(adv_trained_net, cifar_normer, loss_obj, use_gpu=True)
+    attack_obj = aa.LInfPGD(adv_trained_net, cifar_normer, loss_obj)
     attack_param = advtrain.AdversarialAttackParameters(attack_obj, 1.0,
                                                         attack_specific_params=ATTACK_SPECIFIC_PARAMS)
     attack_params[str(penalty)] = attack_param
@@ -96,7 +95,7 @@ for penalty in penalties:
 particular_param = attack_params['1.0']
 eval_obj = adveval.AdversarialEvaluation(adv_trained_net, cifar_normer)
 torch.cuda.empty_cache()
-out = eval_obj.evaluate_ensemble(val_loader, {'partic': particular_param}, use_gpu=True,
+out = eval_obj.evaluate_ensemble(val_loader, {'partic': particular_param},
                                  num_minibatches=20)
 
 print(out)

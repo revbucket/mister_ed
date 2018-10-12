@@ -32,8 +32,9 @@ DEFAULT_STDS         = config.IMAGENET_STDS
 #                                                                            #
 ##############################################################################
 
-def load_pretrained_imagenet(arch='nasnetalarge', use_gpu=False,
-                             return_normalizer=False):
+def load_pretrained_imagenet(arch='nasnetalarge',
+                             return_normalizer=False,
+                             manual_gpu=None):
 
     assert arch in ['fbresnet152', 'bninception', 'resnext101_32x4d',
                       'resnext101_64x4d', 'inceptionv4', 'inceptionresnetv2',
@@ -50,6 +51,12 @@ def load_pretrained_imagenet(arch='nasnetalarge', use_gpu=False,
     model = ptm.__dict__[arch](num_classes=1000,
                                pretrained='imagenet')
     model.eval()
+
+    if manual_gpu is not None:
+        use_gpu = manual_gpu
+    else:
+        use_gpu = utils.use_gpu()
+
     if use_gpu:
         model.cuda()
 
@@ -85,7 +92,7 @@ def normalizer_from_imagenet_model(model):
 ###############################################################################
 
 def load_imagenet_data(train_or_val, extra_args=None, dataset_dir=None,
-                       normalize=False, batch_size=None, use_gpu=False,
+                       normalize=False, batch_size=None, manual_gpu=None,
                        means=None, stds=None,
                        shuffle=True, no_transform=False):
 
@@ -116,6 +123,11 @@ def load_imagenet_data(train_or_val, extra_args=None, dataset_dir=None,
         transform = transforms.Compose([])
     else:
         transform = transforms.Compose(transform_list)
+
+    if manual_gpu is not None:
+        use_gpu = manual_gpu
+    else:
+        use_gpu = utils.use_gpu()
 
     dataset = datasets.ImageFolder(
             full_image_dir, transform)

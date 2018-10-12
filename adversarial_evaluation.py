@@ -36,13 +36,16 @@ class EvaluationResult(object):
     """
 
     def __init__(self, attack_params, classifier_net, normalizer, to_eval=None,
-                 use_gpu=False):
+                 manual_gpu=None):
         """ to_eval is a dict of {str : toEval methods}.
         """
         self.attack_params = attack_params
         self.classifier_net = classifier_net
         self.normalizer = normalizer
-        self.use_gpu = use_gpu
+        if manual_gpu is not None:
+            self.use_gpu = manual_gpu
+        else:
+            self.use_gpu = utils.use_gpu()
 
         # First map shorthand strings to methods
         shorthand_evals = {'top1': self.top1_accuracy,
@@ -66,7 +69,7 @@ class EvaluationResult(object):
         attack_out = self.attack_params.attack(examples, labels)
 
         for k, v in self.to_eval.items():
-            v(k, attack_out, examples, labels)
+            v(k, attack_out)
 
 
     def _get_successful_attacks(self, attack_out):
@@ -78,8 +81,7 @@ class EvaluationResult(object):
 
 
 
-    def top1_accuracy(self, eval_label, attack_out, ground_examples,
-                      labels):
+    def top1_accuracy(self, eval_label, attack_out):
 
         ######################################################################
         #  First set up evaluation result if doesn't exist:                  #
@@ -102,19 +104,18 @@ class EvaluationResult(object):
         result.update(attack_accuracy_int / num_examples, n=int(num_examples))
 
 
-    def avg_successful_lpips(self, eval_label, attack_out, ground_examples,
-                             labels):
+    def avg_successful_lpips(self, eval_label, attack_out):
         ######################################################################
         #  First set up evaluation result if doesn't exist:                  #
         ######################################################################
         if self.results[eval_label] is None:
             self.results[eval_label] = utils.AverageMeter()
-            self.dist_model = dm.DistModel(net='alex', use_gpu=self.use_gpu)
+            self.dist_model = dm.DistModel(net='alex', manual_gpu=self.use_gpu)
 
         result = self.results[eval_label]
 
         if self.params[eval_label] is None:
-            dist_model = dm.DistModel(net='alex', use_gpu=self.use_gpu)
+            dist_model = dm.DistModel(net='alex', manual_gpu=self.use_gpu)
             self.params[eval_label] = {'dist_model': dist_model}
 
         dist_model = self.params[eval_label]['dist_model']
@@ -139,8 +140,7 @@ class EvaluationResult(object):
 
         result.update(avg_lpips_dist, n=num_successful)
 
-    def avg_successful_ssim(self, eval_label, attack_out, ground_examples,
-                            labels):
+    def avg_successful_ssim(self, eval_label, attack_out):
         # We actually compute (1-ssim) to match better with notion of a 'metric'
         ######################################################################
         #  First set up evaluation result if doesn't exist:                  #
@@ -196,10 +196,13 @@ class IdentityEvaluation(EvaluationResult):
     """ Subclass of evaluation result that just computes top1 accuracy for the
         ground truths (attack perturbation is the identity)
     """
-    def __init__(self, classifier_net, normalizer, use_gpu=False):
+    def __init__(self, classifier_net, normalizer, manual_gpu=False):
         self.classifier_net = classifier_net
         self.normalizer = normalizer
-        self.use_gpu = use_gpu
+        if manual_gpu is not None:
+            self.use_gpu = manual_gpu
+        else:
+            self.use_gpu = utils.use_gpu()
 
         self.results = {'top1': utils.AverageMeter()}
 
@@ -231,10 +234,13 @@ class AdversarialEvaluation(object):
     """ Wrapper for evaluation of NN's against adversarial examples
     """
 
-    def __init__(self, classifier_net, normalizer, use_gpu=False):
+    def __init__(self, classifier_net, normalizer, manual_gpu=None):
         self.classifier_net = classifier_net
         self.normalizer = normalizer
-        self.use_gpu = use_gpu
+        if manual_gpu is not None:
+            self.use_gpu = manual_gpu
+        else:
+            self.use_gpu = utils.use_gpu()
 
 
     def evaluate_ensemble(self, data_loader, attack_ensemble,
@@ -273,7 +279,7 @@ class AdversarialEvaluation(object):
             # Build ground result
             ground_result = IdentityEvaluation(self.classifier_net,
                                                self.normalizer,
-                                               use_gpu=self.use_gpu)
+                                               manual_gpu=self.use_gpu)
             attack_ensemble['ground'] = ground_result
 
         # Do GPU checks
@@ -435,8 +441,3 @@ class AdversarialEvaluation(object):
                                                   return_concat=True)[0]
 
 
-
-
-
-if __name__ == '__main__':
-    import interact

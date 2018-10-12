@@ -1,11 +1,12 @@
 """ Utilities for general pytorch helpfulness """
-
+from __future__ import print_function
 import torch
 import numpy as np
 import torchvision.transforms as transforms
 import torch.cuda as cuda
 import gc
 import random
+import os
 
 from torch.autograd import Variable, Function
 import subprocess
@@ -17,6 +18,44 @@ import subprocess
 #                                                                             #
 ###############################################################################
 # aka things for safer pytorch usage
+
+
+def use_gpu():
+    """ The shortcut to retrieve the environment variable 'MISTER_ED_GPU'"""
+    try:
+        str_val = os.environ['MISTER_ED_GPU']
+    except:
+        set_global_gpu()
+        str_val = os.environ['MISTER_ED_GPU']
+    assert str_val in ['True', 'False']
+    return str_val == 'True'
+
+
+def set_global_gpu(manual=None):
+    """ Sets the environment variable 'MISTER_ED_GPU'. Defaults to using gpu
+        if cuda is available
+    ARGS:
+        manual : bool - we set the 'MISTER_ED_GPU' environment var to the string
+                 of whatever this is
+    RETURNS
+        None
+    """
+    if manual is None:
+        val = cuda.is_available()
+    else:
+        val = manual
+    os.environ['MISTER_ED_GPU'] = str(val)
+
+
+def unset_global_gpu():
+    """ Removes the environment variable 'MISTER_ED_GPU'
+    # NOTE: this relies on unsetenv, which works on 'most flavors of Unix'
+      according to the docs
+    """
+    try:
+        os.unsetenv('MISTER_ED_GPU')
+    except:
+        raise Warning("os.unsetenv(.) isn't working properly")
 
 
 def cuda_assert(use_cuda):

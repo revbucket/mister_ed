@@ -334,9 +334,13 @@ class LpipsRegularization(ReferenceRegularizer):
     def __init__(self, fix_im, **kwargs):
         super(LpipsRegularization, self).__init__(fix_im)
 
-        use_gpu = kwargs.get('use_gpu', False)
-        self.use_gpu = use_gpu
-        self.dist_model = dm.DistModel(net='alex', use_gpu=self.use_gpu)
+        manual_gpu = kwargs.get('manual_gpu', None)
+        if manual_gpu is not None:
+            self.use_gpu = manual_gpu
+        else:
+            self.use_gpu = utils.use_gpu()
+
+        self.dist_model = dm.DistModel(net='alex', manual_gpu=self.use_gpu)
 
     def forward(self, examples, *args, **kwargs):
         xform = lambda im: im * 2.0 - 1.0

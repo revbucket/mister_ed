@@ -53,14 +53,15 @@ USE_GPU = torch.cuda.is_available()
 #                                                                            #
 ##############################################################################
 
-def build_delta_fgsm(model, normalizer, linf_bound=L_INF_BOUND, use_gpu=USE_GPU,
-                     verbose=False, adv_loss='xentropy', output='attack'):
+def build_delta_fgsm(model, normalizer, linf_bound=L_INF_BOUND,
+                     verbose=False, adv_loss='xentropy', output='attack',
+                     manual_gpu=None):
 
     # Build threat
     delta_threat = ap.ThreatModel(ap.DeltaAddition,
                                   ap.PerturbationParameters(lp_style='inf',
                                                             lp_bound=linf_bound,
-                                                            use_gpu=use_gpu))
+                                                            manual_gpu=manual_gpu))
 
     # Build loss
     assert adv_loss in ['xentropy', 'cw']
@@ -73,7 +74,7 @@ def build_delta_fgsm(model, normalizer, linf_bound=L_INF_BOUND, use_gpu=USE_GPU,
 
     # Build attack
     fgsm_attack = aar.FGSM(model, normalizer, delta_threat,
-                           attack_loss, use_gpu=use_gpu)
+                           attack_loss, manual_gpu=manual_gpu)
 
     # Return based on output arg
     assert output in ['attack', 'params', 'eval']
@@ -92,12 +93,13 @@ def build_delta_fgsm(model, normalizer, linf_bound=L_INF_BOUND, use_gpu=USE_GPU,
     to_eval= {'top1': 'top1',
               'lpips': 'avg_successful_lpips'}
     eval_result = adveval.EvaluationResult(params, model, normalizer,
-                                           to_eval=to_eval, use_gpu=USE_GPU)
+                                           to_eval=to_eval,
+                                           manual_gpu=manual_gpu)
     return eval_result
 
 
 
-def build_delta_pgd(model, normalizer, linf_bound=L_INF_BOUND, use_gpu=USE_GPU,
+def build_delta_pgd(model, normalizer, linf_bound=L_INF_BOUND, manual_gpu=None,
                     verbose=False, adv_loss='cw', num_iter=PGD_ITER,
                     loss_convergence=LOSS_CONVERGENCE, output='attack',
                     extra_attack_kwargs=None):
@@ -106,7 +108,7 @@ def build_delta_pgd(model, normalizer, linf_bound=L_INF_BOUND, use_gpu=USE_GPU,
     delta_threat = ap.ThreatModel(ap.DeltaAddition,
                                   ap.PerturbationParameters(lp_style='inf',
                                                             lp_bound=linf_bound,
-                                                            use_gpu=use_gpu))
+                                                            manual_gpu=manual_gpu))
 
     # Build loss
     assert adv_loss in ['xentropy', 'cw']
@@ -119,7 +121,7 @@ def build_delta_pgd(model, normalizer, linf_bound=L_INF_BOUND, use_gpu=USE_GPU,
 
     # Build attack
     pgd_attack = aar.PGD(model, normalizer, delta_threat,
-                         attack_loss, use_gpu=use_gpu)
+                         attack_loss, manual_gpu=manual_gpu)
 
     # Return based on output arg
     assert output in ['attack', 'params', 'eval']
@@ -146,7 +148,7 @@ def build_delta_pgd(model, normalizer, linf_bound=L_INF_BOUND, use_gpu=USE_GPU,
               'lpips': 'avg_successful_lpips'}
 
     eval_result = adveval.EvaluationResult(params, model, normalizer,
-                                           to_eval=to_eval, use_gpu=USE_GPU)
+                                           to_eval=to_eval, manual_gpu=manual_gpu)
     return eval_result
 
 
@@ -156,7 +158,7 @@ def build_delta_pgd(model, normalizer, linf_bound=L_INF_BOUND, use_gpu=USE_GPU,
 #                                                                            #
 ##############################################################################
 
-def build_stadv_pgd(model, normalizer, linf_bound=FLOW_LINF, use_gpu=USE_GPU,
+def build_stadv_pgd(model, normalizer, linf_bound=FLOW_LINF, manual_gpu=None,
                     verbose=False, adv_loss='cw', num_iter=PGD_ITER,
                     loss_convergence=LOSS_CONVERGENCE, use_stadv=True,
                     output='attack', norm_hyperparam=0.05,
@@ -167,7 +169,7 @@ def build_stadv_pgd(model, normalizer, linf_bound=FLOW_LINF, use_gpu=USE_GPU,
                                  ap.PerturbationParameters(lp_style='inf',
                                                            lp_bound=linf_bound,
                                                    xform_class=st.FullSpatial,
-                                                   use_gpu=use_gpu,
+                                                   manual_gpu=manual_gpu,
                                                    use_stadv=use_stadv))
 
 
@@ -187,7 +189,7 @@ def build_stadv_pgd(model, normalizer, linf_bound=FLOW_LINF, use_gpu=USE_GPU,
 
     # Build attack
     pgd_attack = aar.PGD(model, normalizer, flow_threat,
-                         attack_loss, use_gpu=use_gpu)
+                         attack_loss, manual_gpu=manual_gpu)
 
 
     # Return based on output arg
@@ -215,7 +217,7 @@ def build_stadv_pgd(model, normalizer, linf_bound=FLOW_LINF, use_gpu=USE_GPU,
               'lpips': 'avg_successful_lpips'}
 
     eval_result = adveval.EvaluationResult(params, model, normalizer,
-                                           to_eval=to_eval, use_gpu=USE_GPU)
+                                           to_eval=to_eval, manual_gpu=manual_gpu)
     return eval_result
 
 
@@ -228,7 +230,7 @@ def build_stadv_pgd(model, normalizer, linf_bound=FLOW_LINF, use_gpu=USE_GPU,
 ##############################################################################
 
 def build_rot_trans_pgd(model, normalizer, trans_bound=TRANS_LINF,
-                        rot_bound=ROT_LINF, use_gpu=USE_GPU,
+                        rot_bound=ROT_LINF, manual_gpu=None,
                         verbose=False, adv_loss='cw', num_iter=PGD_ITER,
                         loss_convergence=LOSS_CONVERGENCE,
                         output='attack',
@@ -239,12 +241,12 @@ def build_rot_trans_pgd(model, normalizer, trans_bound=TRANS_LINF,
                                   ap.PerturbationParameters(lp_style='inf',
                                                         lp_bound=trans_bound,
                                             xform_class=st.TranslationTransform,
-                                                            use_gpu=use_gpu))
+                                                            manual_gpu=manual_gpu))
     rotation_threat = ap.ThreatModel(ap.ParameterizedXformAdv,
                                      ap.PerturbationParameters(
                                                 xform_class=st.RotationTransform,
                                             lp_style='inf', lp_bound=rot_bound,
-                                            use_gpu=use_gpu))
+                                            manual_gpu=manual_gpu))
 
     sequence_threat = ap.ThreatModel(ap.SequentialPerturbation,
                                      [trans_threat, rotation_threat])
@@ -262,7 +264,7 @@ def build_rot_trans_pgd(model, normalizer, trans_bound=TRANS_LINF,
 
     # Build attack
     pgd_attack = aar.PGD(model, normalizer, sequence_threat,
-                         attack_loss, use_gpu=use_gpu)
+                         attack_loss, manual_gpu=manual_gpu)
 
 
     # Return based on output arg
@@ -290,7 +292,7 @@ def build_rot_trans_pgd(model, normalizer, trans_bound=TRANS_LINF,
               'lpips': 'avg_successful_lpips'}
 
     eval_result = adveval.EvaluationResult(params, model, normalizer,
-                                           to_eval=to_eval, use_gpu=USE_GPU)
+                                           to_eval=to_eval, manual_gpu=manual_gpu)
     return eval_result
 
 
@@ -304,7 +306,7 @@ def build_rot_trans_pgd(model, normalizer, trans_bound=TRANS_LINF,
 
 def build_delta_rot_trans_pgd(model, normalizer, delta_bound=L_INF_BOUND,
                               trans_bound=TRANS_LINF,
-                              rot_bound=ROT_LINF, use_gpu=USE_GPU,
+                              rot_bound=ROT_LINF, manual_gpu=None,
                               verbose=False, adv_loss='cw', num_iter=PGD_ITER,
                               loss_convergence=LOSS_CONVERGENCE,
                               output='attack',
@@ -314,18 +316,18 @@ def build_delta_rot_trans_pgd(model, normalizer, delta_bound=L_INF_BOUND,
     delta_threat = ap.ThreatModel(ap.DeltaAddition,
                                   ap.PerturbationParameters(lp_style='inf',
                                                            lp_bound=delta_bound,
-                                                           use_gpu=use_gpu))
+                                                           manual_gpu=manual_gpu))
 
     trans_threat = ap.ThreatModel(ap.ParameterizedXformAdv,
                                   ap.PerturbationParameters(lp_style='inf',
                                                         lp_bound=trans_bound,
                                             xform_class=st.TranslationTransform,
-                                                            use_gpu=use_gpu))
+                                                            manual_gpu=manual_gpu))
     rotation_threat = ap.ThreatModel(ap.ParameterizedXformAdv,
                                      ap.PerturbationParameters(
                                                 xform_class=st.RotationTransform,
                                             lp_style='inf', lp_bound=rot_bound,
-                                            use_gpu=use_gpu))
+                                            manual_gpu=manual_gpu))
 
     sequence_threat = ap.ThreatModel(ap.SequentialPerturbation,
                                      [delta_threat, trans_threat,
@@ -344,7 +346,7 @@ def build_delta_rot_trans_pgd(model, normalizer, delta_bound=L_INF_BOUND,
 
     # Build attack
     pgd_attack = aar.PGD(model, normalizer, sequence_threat,
-                         attack_loss, use_gpu=use_gpu)
+                         attack_loss, manual_gpu=manual_gpu)
 
 
     # Return based on output arg
@@ -383,7 +385,7 @@ def build_delta_rot_trans_pgd(model, normalizer, delta_bound=L_INF_BOUND,
 ##############################################################################
 
 def build_delta_stadv_pgd(model, normalizer, delta_bound=L_INF_BOUND,
-                          flow_bound=FLOW_LINF, use_gpu=USE_GPU,
+                          flow_bound=FLOW_LINF, manual_gpu=None,
                           verbose=False, adv_loss='cw', num_iter=PGD_ITER,
                           loss_convergence=LOSS_CONVERGENCE,
                           output='attack',
@@ -392,12 +394,12 @@ def build_delta_stadv_pgd(model, normalizer, delta_bound=L_INF_BOUND,
     delta_threat = ap.ThreatModel(ap.DeltaAddition,
                                   ap.PerturbationParameters(lp_style='inf',
                                                             lp_bound=delta_bound,
-                                                            use_gpu=use_gpu))
+                                                            manual_gpu=manual_gpu))
     flow_threat = ap.ThreatModel(ap.ParameterizedXformAdv,
                                  ap.PerturbationParameters(lp_style='inf',
                                                            lp_bound=flow_bound,
                                                            xform_class=st.FullSpatial,
-                                                           use_gpu=use_gpu,
+                                                           manual_gpu=manual_gpu,
                                                            use_stadv=True))
     sequence_threat = ap.ThreatModel(ap.SequentialPerturbation,
                                  [delta_threat, flow_threat],
@@ -421,7 +423,7 @@ def build_delta_stadv_pgd(model, normalizer, delta_bound=L_INF_BOUND,
     # Build attack
     optimizer = optim.Adam
     optimizer_kwargs = {'lr': 0.001}
-    pgd_attack = aar.PGD(model, normalizer, sequence_threat, loss_fxn, use_gpu=use_gpu)
+    pgd_attack = aar.PGD(model, normalizer, sequence_threat, loss_fxn, manual_gpu=manual_gpu)
 
 
     assert output in ['attack', 'params', 'eval']
@@ -449,7 +451,7 @@ def build_delta_stadv_pgd(model, normalizer, delta_bound=L_INF_BOUND,
               'lpips': 'avg_successful_lpips'}
 
     eval_result = adveval.EvaluationResult(params, model, normalizer,
-                                           to_eval=to_eval, use_gpu=use_gpu)
+                                           to_eval=to_eval, manual_gpu=manual_gpu)
     return eval_result
 
 
@@ -463,7 +465,7 @@ def build_delta_stadv_pgd(model, normalizer, delta_bound=L_INF_BOUND,
 
 def build_delta_stadv_rot_trans_pgd(model, normalizer, delta_bound=L_INF_BOUND,
                                    flow_bound=FLOW_LINF, trans_bound=TRANS_LINF,
-                                   rot_bound=ROT_LINF, use_gpu=USE_GPU,
+                                   rot_bound=ROT_LINF, manual_gpu=None,
                               verbose=False, adv_loss='cw', num_iter=PGD_ITER,
                               loss_convergence=LOSS_CONVERGENCE,
                               output='attack',
@@ -472,24 +474,24 @@ def build_delta_stadv_rot_trans_pgd(model, normalizer, delta_bound=L_INF_BOUND,
     delta_threat = ap.ThreatModel(ap.DeltaAddition,
                                   ap.PerturbationParameters(lp_style='inf',
                                                             lp_bound=delta_bound,
-                                                            use_gpu=use_gpu))
+                                                            manual_gpu=manual_gpu))
     flow_threat = ap.ThreatModel(ap.ParameterizedXformAdv,
                                  ap.PerturbationParameters(lp_style='inf',
                                                            lp_bound=flow_bound,
                                                            xform_class=st.FullSpatial,
-                                                           use_gpu=use_gpu,
+                                                           manual_gpu=manual_gpu,
                                                            use_stadv=True))
 
     trans_threat = ap.ThreatModel(ap.ParameterizedXformAdv,
                                   ap.PerturbationParameters(lp_style='inf',
                                                         lp_bound=trans_bound,
                                             xform_class=st.TranslationTransform,
-                                                            use_gpu=use_gpu))
+                                                            manual_gpu=manual_gpu))
     rotation_threat = ap.ThreatModel(ap.ParameterizedXformAdv,
                                      ap.PerturbationParameters(
                                                 xform_class=st.RotationTransform,
                                             lp_style='inf', lp_bound=rot_bound,
-                                            use_gpu=use_gpu))
+                                            manual_gpu=manual_gpu))
 
 
     sequence_threat = ap.ThreatModel(ap.SequentialPerturbation,
@@ -517,7 +519,7 @@ def build_delta_stadv_rot_trans_pgd(model, normalizer, delta_bound=L_INF_BOUND,
     optimizer = optim.Adam
     optimizer_kwargs = {'lr': 0.001}
     pgd_attack = aar.PGD(model, normalizer, sequence_threat, loss_fxn,
-                         use_gpu=use_gpu)
+                         manual_gpu=manual_gpu)
 
     assert output in ['attack', 'params', 'eval']
     if output == 'attack':
@@ -541,7 +543,7 @@ def build_delta_stadv_rot_trans_pgd(model, normalizer, delta_bound=L_INF_BOUND,
               'lpips': 'avg_successful_lpips'}
 
     eval_result = adveval.EvaluationResult(params, model, normalizer,
-                                           to_eval=to_eval, use_gpu=use_gpu)
+                                           to_eval=to_eval, manual_gpu=manual_gpu)
     return eval_result
 
 
@@ -551,7 +553,7 @@ def build_delta_stadv_rot_trans_pgd(model, normalizer, delta_bound=L_INF_BOUND,
 
 def build_stadv_rot_trans_pgd(model, normalizer,
                                    flow_bound=FLOW_LINF, trans_bound=TRANS_LINF,
-                                   rot_bound=ROT_LINF, use_gpu=USE_GPU,
+                                   rot_bound=ROT_LINF, manual_gpu=None,
                               verbose=False, adv_loss='cw', num_iter=PGD_ITER,
                               loss_convergence=LOSS_CONVERGENCE,
                               output='attack',
@@ -562,19 +564,19 @@ def build_stadv_rot_trans_pgd(model, normalizer,
                                  ap.PerturbationParameters(lp_style='inf',
                                                            lp_bound=flow_bound,
                                                            xform_class=st.FullSpatial,
-                                                           use_gpu=use_gpu,
+                                                           manual_gpu=manual_gpu,
                                                            use_stadv=True))
 
     trans_threat = ap.ThreatModel(ap.ParameterizedXformAdv,
                                   ap.PerturbationParameters(lp_style='inf',
                                                         lp_bound=trans_bound,
                                             xform_class=st.TranslationTransform,
-                                                            use_gpu=use_gpu))
+                                                            manual_gpu=manual_gpu))
     rotation_threat = ap.ThreatModel(ap.ParameterizedXformAdv,
                                      ap.PerturbationParameters(
                                                 xform_class=st.RotationTransform,
                                             lp_style='inf', lp_bound=rot_bound,
-                                            use_gpu=use_gpu))
+                                            manual_gpu=manual_gpu))
 
 
     sequence_threat = ap.ThreatModel(ap.SequentialPerturbation,
@@ -600,7 +602,7 @@ def build_stadv_rot_trans_pgd(model, normalizer,
     optimizer = optim.Adam
     optimizer_kwargs = {'lr': 0.001}
     pgd_attack = aar.PGD(model, normalizer, sequence_threat, loss_fxn,
-                         use_gpu=use_gpu)
+                         manual_gpu=manual_gpu)
 
     assert output in ['attack', 'params', 'eval']
     if output == 'attack':
@@ -624,6 +626,6 @@ def build_stadv_rot_trans_pgd(model, normalizer,
               'lpips': 'avg_successful_lpips'}
 
     eval_result = adveval.EvaluationResult(params, model, normalizer,
-                                           to_eval=to_eval, use_gpu=use_gpu)
+                                           to_eval=to_eval, manual_gpu=manual_gpu)
     return eval_result
 

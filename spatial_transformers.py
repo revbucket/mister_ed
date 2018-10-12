@@ -39,7 +39,11 @@ class ParameterizedTransformation(nn.Module):
 
     def __init__(self, **kwargs):
         super(ParameterizedTransformation, self).__init__()
-        self.use_gpu = kwargs.get('use_gpu', False)
+
+        if kwargs.get('manual_gpu', None) is not None:
+            self.use_gpu = kwargs['manual_gpu']
+        else:
+            self.use_gpu = utils.use_gpu()
 
     def norm(self, lp='inf'):
         raise NotImplementedError("Need to call subclass's norm!")
@@ -233,7 +237,7 @@ class FullSpatial(ParameterizedTransformation):
         super(FullSpatial, self).merge_xform(other, self_mask)
 
         new_xform = FullSpatial(shape=self.img_shape,
-                                use_gpu=self.use_gpu)
+                                manual_gpu=self.use_gpu)
 
         new_params = utils.fold_mask(self.xform_params.data,
                                      other.xform_params.data, self_mask)
