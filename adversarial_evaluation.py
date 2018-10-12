@@ -147,12 +147,14 @@ class EvaluationResult(object):
         ######################################################################
         if self.results[eval_label] is None:
             self.results[eval_label] = utils.AverageMeter()
-
+        result = self.results[eval_label]
         ######################################################################
         #  Compute which attacks were successful                             #
         ######################################################################
         successful_pert, successful_orig = self._get_successful_attacks(
-                                                                     attack_out)
+                                                                   attack_out)
+
+
         if successful_pert is None or successful_pert.numel() == 0:
             return
 
@@ -169,7 +171,7 @@ class EvaluationResult(object):
 
 
         avg_minus_ssim = 1 - (runsum / float(count))
-        result.update(avg_minus_ssim, n=num_successful)
+        result.update(avg_minus_ssim, n=count)
 
 
     def stash_perturbations(self, eval_label, attack_out, ground_examples,
