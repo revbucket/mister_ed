@@ -22,6 +22,7 @@ import config
 import glob
 import numpy as np
 from skimage.measure import compare_ssim as ssim
+import adversarial_attacks_refactor as aar
 import math
 
 ###########################################################################
@@ -35,13 +36,13 @@ class EvaluationResult(object):
         output of AdversarialEvaluation
     """
 
-    def __init__(self, attack_params, classifier_net, normalizer, to_eval=None,
+    def __init__(self, attack_params, to_eval=None,
                  manual_gpu=None):
         """ to_eval is a dict of {str : toEval methods}.
         """
         self.attack_params = attack_params
-        self.classifier_net = classifier_net
-        self.normalizer = normalizer
+        self.classifier_net = attack_params.adv_attack_obj.classifier_net
+        self.normalizer = attack_params.adv_attack_obj.normalizer
         if manual_gpu is not None:
             self.use_gpu = manual_gpu
         else:
@@ -51,7 +52,8 @@ class EvaluationResult(object):
         shorthand_evals = {'top1': self.top1_accuracy,
                            'avg_successful_lpips': self.avg_successful_lpips,
                            'avg_successful_ssim': self.avg_successful_ssim,
-                           'stash_perturbations': self.stash_perturbations}
+                           'stash_perturbations': self.stash_perturbations,
+                           'avg_loss_value': self.avg_loss_value}
         if to_eval is None:
             to_eval = {'top1': 'top1'}
 
@@ -102,6 +104,7 @@ class EvaluationResult(object):
                                                 attack_examples,
                                                 pre_adv_labels, topk=1)
         result.update(attack_accuracy_int / num_examples, n=int(num_examples))
+        self.results[eval_label] = result
 
 
     def avg_successful_lpips(self, eval_label, attack_out):
@@ -147,6 +150,7 @@ class EvaluationResult(object):
         ######################################################################
         if self.results[eval_label] is None:
             self.results[eval_label] = utils.AverageMeter()
+        result = self.results[eval_label]
 
         ######################################################################
         #  Compute which attacks were successful                             #
@@ -169,7 +173,39 @@ class EvaluationResult(object):
 
 
         avg_minus_ssim = 1 - (runsum / float(count))
-        result.update(avg_minus_ssim, n=num_successful)
+        result.update(avg_minus_ssim, n=count)
+
+
+    def avg_loss_value(self, eval_label, attack_out):
+        """ Computes and keeps track of the average attack loss """
+
+        ######################################################################
+        #   First set up evaluation result if it doesn't exist               #
+        ######################################################################
+
+        if self.results[eval_label] is None:
+            self.results[eval_label] = utils.AverageMeter()
+        result = self.results[eval_label]
+
+        ######################################################################
+        #   Next collect the loss function and compute loss                  #
+        ######################################################################
+        attack_obj = self.attack_params.adv_attack_obj
+
+        # Structure of loss objects varies based on which attack class used
+        if isinstance(attack_obj, (aar.FGSM, aar.PGD)):
+            attack_loss = attack_obj.loss_fxn
+        elif isinstance(attack_obj, aar.CarliniWagner):
+            attack_loss = attack_obj._construct_loss_fxn(1.0, 0.0)
+
+        attack_loss.setup_attack_batch(attack_out[0])
+
+        loss_val = attack_loss.forward(attack_out[0], attack_out[1],
+                                       perturbation=attack_out[4])
+        loss_val_sum = float(torch.sum(loss_val))
+
+        count = attack_out[0].shape[0]
+        result.update(loss_val_sum, n=count)
 
 
     def stash_perturbations(self, eval_label, attack_out, ground_examples,
@@ -210,7 +246,7 @@ class IdentityEvaluation(EvaluationResult):
         pass
 
     def eval(self, examples, labels):
-        assert self.results.keys() == ['top1']
+        assert list(self.results.keys()) == ['top1']
         ground_avg = self.results['top1']
         ground_output = self.classifier_net(self.normalizer(Variable(examples)))
         minibatch = float(examples.shape[0])

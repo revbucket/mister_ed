@@ -27,7 +27,7 @@ class AdversarialAttackParameters(object):
     """ Wrapper to store an adversarial attack object as well as some extra
         parameters for how to use it in training
     """
-    def __init__(self, adv_attack_obj, proportion_attacked,
+    def __init__(self, adv_attack_obj, proportion_attacked=1.0,
                  attack_specific_params=None):
         """ Stores params for how to use adversarial attacks in training
         ARGS:
