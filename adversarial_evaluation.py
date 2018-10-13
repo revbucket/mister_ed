@@ -156,7 +156,9 @@ class EvaluationResult(object):
         #  Compute which attacks were successful                             #
         ######################################################################
         successful_pert, successful_orig = self._get_successful_attacks(
-                                                                     attack_out)
+                                                                   attack_out)
+
+
         if successful_pert is None or successful_pert.numel() == 0:
             return
 
@@ -206,7 +208,6 @@ class EvaluationResult(object):
 
         count = attack_out[0].shape[0]
         result.update(loss_val_sum, n=count)
-
 
     def stash_perturbations(self, eval_label, attack_out, ground_examples,
                             labels):
