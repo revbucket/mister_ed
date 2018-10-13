@@ -24,6 +24,7 @@ import numpy as np
 from skimage.measure import compare_ssim as ssim
 import adversarial_attacks_refactor as aar
 import math
+import functools
 
 ###########################################################################
 #                                                                         #
@@ -57,9 +58,13 @@ class EvaluationResult(object):
         if to_eval is None:
             to_eval = {'top1': 'top1'}
 
-        for key, val in list(to_eval.items()):
+        to_eval = dict(to_eval.items())
+        for key, val in list(to_eval.items()):            
             if val in shorthand_evals:
                 to_eval[key] = shorthand_evals[val]
+            else:
+                assert callable(val)
+                to_eval[key] = functools.partial(val, self)
         self.to_eval = to_eval
         self.results = {k: None for k in self.to_eval}
         self.params = {k: None for k in self.to_eval}
