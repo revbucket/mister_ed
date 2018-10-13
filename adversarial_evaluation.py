@@ -184,7 +184,8 @@ class EvaluationResult(object):
 
 
     def avg_loss_value(self, eval_label, attack_out):
-        """ Computes and keeps track of the average attack loss """
+        """ Computes and keeps track of the average attack loss
+        """
 
         ######################################################################
         #   First set up evaluation result if it doesn't exist               #

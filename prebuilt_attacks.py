@@ -92,7 +92,7 @@ def build_delta_fgsm(model, normalizer, linf_bound=L_INF_BOUND,
 
     to_eval= {'top1': 'top1',
               'lpips': 'avg_successful_lpips'}
-    eval_result = adveval.EvaluationResult(params, model, normalizer,
+    eval_result = adveval.EvaluationResult(params,
                                            to_eval=to_eval,
                                            manual_gpu=manual_gpu)
     return eval_result
@@ -147,7 +147,7 @@ def build_delta_pgd(model, normalizer, linf_bound=L_INF_BOUND, manual_gpu=None,
     to_eval= {'top1': 'top1',
               'lpips': 'avg_successful_lpips'}
 
-    eval_result = adveval.EvaluationResult(params, model, normalizer,
+    eval_result = adveval.EvaluationResult(params,
                                            to_eval=to_eval, manual_gpu=manual_gpu)
     return eval_result
 
@@ -216,7 +216,7 @@ def build_stadv_pgd(model, normalizer, linf_bound=FLOW_LINF, manual_gpu=None,
     to_eval= {'top1': 'top1',
               'lpips': 'avg_successful_lpips'}
 
-    eval_result = adveval.EvaluationResult(params, model, normalizer,
+    eval_result = adveval.EvaluationResult(params,
                                            to_eval=to_eval, manual_gpu=manual_gpu)
     return eval_result
 
@@ -291,7 +291,7 @@ def build_rot_trans_pgd(model, normalizer, trans_bound=TRANS_LINF,
     to_eval= {'top1': 'top1',
               'lpips': 'avg_successful_lpips'}
 
-    eval_result = adveval.EvaluationResult(params, model, normalizer,
+    eval_result = adveval.EvaluationResult(params,
                                            to_eval=to_eval, manual_gpu=manual_gpu)
     return eval_result
 
@@ -373,7 +373,7 @@ def build_delta_rot_trans_pgd(model, normalizer, delta_bound=L_INF_BOUND,
     to_eval= {'top1': 'top1',
               'lpips': 'avg_successful_lpips'}
 
-    eval_result = adveval.EvaluationResult(params, model, normalizer,
+    eval_result = adveval.EvaluationResult(params,
                                            to_eval=to_eval, use_gpu=USE_GPU)
     return eval_result
 
@@ -450,7 +450,7 @@ def build_delta_stadv_pgd(model, normalizer, delta_bound=L_INF_BOUND,
     to_eval= {'top1': 'top1',
               'lpips': 'avg_successful_lpips'}
 
-    eval_result = adveval.EvaluationResult(params, model, normalizer,
+    eval_result = adveval.EvaluationResult(params,
                                            to_eval=to_eval, manual_gpu=manual_gpu)
     return eval_result
 
@@ -542,7 +542,7 @@ def build_delta_stadv_rot_trans_pgd(model, normalizer, delta_bound=L_INF_BOUND,
     to_eval= {'top1': 'top1',
               'lpips': 'avg_successful_lpips'}
 
-    eval_result = adveval.EvaluationResult(params, model, normalizer,
+    eval_result = adveval.EvaluationResult(params,
                                            to_eval=to_eval, manual_gpu=manual_gpu)
     return eval_result
 
@@ -625,7 +625,7 @@ def build_stadv_rot_trans_pgd(model, normalizer,
     to_eval= {'top1': 'top1',
               'lpips': 'avg_successful_lpips'}
 
-    eval_result = adveval.EvaluationResult(params, model, normalizer,
+    eval_result = adveval.EvaluationResult(params,
                                            to_eval=to_eval, manual_gpu=manual_gpu)
     return eval_result
 
