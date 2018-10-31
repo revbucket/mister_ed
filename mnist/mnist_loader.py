@@ -28,7 +28,7 @@ DEFAULT_WORKERS      = config.DEFAULT_WORKERS
 
 def load_mnist_data(train_or_val, extra_args=None, dataset_dir=None,
                     batch_size=None, manual_gpu=None,
-                    shuffle=True, no_transform=False):
+                    shuffle=True):
     """ Builds a MNIST data loader for either training or evaluation of
         MNIST data. See the 'DEFAULTS' section in the fxn for default args
     ARGS:
@@ -64,6 +64,10 @@ def load_mnist_data(train_or_val, extra_args=None, dataset_dir=None,
                           'num_workers': DEFAULT_WORKERS,
                           'pin_memory': use_gpu}
     constructor_kwargs.update(extra_args or {})
+    transform_chain = transforms.Compose([transforms.ToTensor()])
+
+
+
 
     # train_or_val validation
     assert train_or_val in ['train', 'val']
@@ -73,7 +77,8 @@ def load_mnist_data(train_or_val, extra_args=None, dataset_dir=None,
     ##################################################################
     return torch.utils.data.DataLoader(
             datasets.MNIST(root=dataset_dir, train=train_or_val=='train',
-                           download=True), **constructor_kwargs)
+                           transform=transform_chain, download=True),
+            **constructor_kwargs)
 
 
 
