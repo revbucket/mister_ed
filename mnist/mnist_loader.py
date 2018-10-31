@@ -65,15 +65,6 @@ def load_mnist_data(train_or_val, extra_args=None, dataset_dir=None,
                           'pin_memory': use_gpu}
     constructor_kwargs.update(extra_args or {})
 
-    # transform chain
-    transform_list = []
-    if no_transform is False:
-        transform_list.extend([transforms.RandomHorizontalFlip(),
-                               transforms.RandomCrop(32, 4)])
-    transform_list.append(transforms.ToTensor())
-
-
-    transform_chain = transforms.Compose(transform_list)
     # train_or_val validation
     assert train_or_val in ['train', 'val']
 
@@ -82,8 +73,7 @@ def load_mnist_data(train_or_val, extra_args=None, dataset_dir=None,
     ##################################################################
     return torch.utils.data.DataLoader(
             datasets.MNIST(root=dataset_dir, train=train_or_val=='train',
-                             transform=transform_chain, download=True),
-            **constructor_kwargs)
+                           download=True), **constructor_kwargs)
 
 
 
