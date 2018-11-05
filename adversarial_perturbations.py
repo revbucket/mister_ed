@@ -54,9 +54,9 @@ class AdversarialPerturbation(nn.Module):
         self.perturbation_params = perturbation_params
 
         if isinstance(perturbation_params, tuple):
-            self.use_gpu = perturbation_params[1].use_gpu or False
+            self.use_gpu = perturbation_params[1].use_gpu or utils.use_gpu()
         else:
-            self.use_gpu = perturbation_params.use_gpu or False
+            self.use_gpu = perturbation_params.use_gpu or utils.use_gpu()
         # Stores parameters of the adversarial perturbation and hyperparams
         # to compute total perturbation norm here
 
