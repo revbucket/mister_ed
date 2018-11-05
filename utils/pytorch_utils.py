@@ -491,6 +491,8 @@ class IdentityNormalize(Function):
     def forward(self, var):
         return var
 
+    def differentiable_call(self):
+        pass
 
 class DifferentiableNormalize(Function):
 

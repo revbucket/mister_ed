@@ -263,7 +263,7 @@ class AdversarialTraining(object):
                                  augment 1:1).
         """
         if attack_parameters is None:
-            return inputs, labels
+            return inputs, labels, None, None
 
 
         assert isinstance(attack_parameters, list)
