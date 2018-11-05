@@ -13,7 +13,7 @@ import random
 
 import utils.pytorch_utils as utils
 import utils.image_utils as img_utils
-import adversarial_attacks_refactor as attacks
+import adversarial_attacks as attacks
 import utils.checkpoints as checkpoints
 
 

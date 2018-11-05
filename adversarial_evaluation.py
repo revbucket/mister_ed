@@ -22,7 +22,7 @@ import config
 import glob
 import numpy as np
 from skimage.measure import compare_ssim as ssim
-import adversarial_attacks_refactor as aar
+import adversarial_attacks as aa
 import math
 import functools
 
@@ -59,7 +59,7 @@ class EvaluationResult(object):
             to_eval = {'top1': 'top1'}
 
         to_eval = dict(to_eval.items())
-        for key, val in list(to_eval.items()):            
+        for key, val in list(to_eval.items()):
             if val in shorthand_evals:
                 to_eval[key] = shorthand_evals[val]
             else:
@@ -201,9 +201,9 @@ class EvaluationResult(object):
         attack_obj = self.attack_params.adv_attack_obj
 
         # Structure of loss objects varies based on which attack class used
-        if isinstance(attack_obj, (aar.FGSM, aar.PGD)):
+        if isinstance(attack_obj, (aa.FGSM, aa.PGD)):
             attack_loss = attack_obj.loss_fxn
-        elif isinstance(attack_obj, aar.CarliniWagner):
+        elif isinstance(attack_obj, aa.CarliniWagner):
             attack_loss = attack_obj._construct_loss_fxn(1.0, 0.0)
 
         attack_loss.setup_attack_batch(attack_out[0])
