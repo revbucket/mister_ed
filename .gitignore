@@ -16,7 +16,9 @@ scripts/*
 
 #notebooks should be ignored except for a few basic ones
 notebooks/*
-!notebooks/main_sandbox.ipynb
+!notebooks/tutorial_1.ipynb
+!notebooks/tutorial_2.ipynb
+!notebooks/tutorial_3.ipynb
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
