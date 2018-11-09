@@ -15,7 +15,7 @@ import cifar10.cifar_loader as cifar_loader
 import cifar10.cifar_resnets as cifar_resnets
 import adversarial_attacks as aa
 import adversarial_training as advtrain
-
+import adversarial_perturbation as ap
 
 BATCH_SIZE = config.DEFAULT_BATCH_SIZE
 WORKERS = config.DEFAULT_WORKERS
