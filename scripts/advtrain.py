@@ -31,7 +31,7 @@ import math
 # Mister_ed imports
 import adversarial_perturbations as ap
 import prebuilt_loss_functions as plf
-import adversarial_attacks_refactor as aar
+import adversarial_attacks as aa
 import adversarial_training as advtrain
 import spatial_transformers as st
 import loss_functions as lf
@@ -77,7 +77,7 @@ def build_fgsm_attack(classifier_net, normalizer):
                                   ap.PerturbationParameters(lp_style='inf',
                                                             lp_bound=L_INF_BOUND))
     attack_loss = plf.VanillaXentropy(classifier_net, normalizer)
-    fgsm_attack = aar.FGSM(classifier_net, cifar_normer, delta_threat,
+    fgsm_attack = aa.FGSM(classifier_net, cifar_normer, delta_threat,
                            attack_loss)
     attack_kwargs = {'verbose': GLOBAL_ATK_KWARGS['verbose']}
     params = advtrain.AdversarialAttackParameters(fgsm_attack, 1.0,
@@ -92,7 +92,7 @@ def build_pgd_linf_attack(classifier_net, normalizer):
                                                             lp_bound=L_INF_BOUND,
                                                             ))
     attack_loss = plf.VanillaXentropy(classifier_net, normalizer=normalizer)
-    pgd_attack = aar.PGD(classifier_net, normalizer, delta_threat, attack_loss)
+    pgd_attack = aa.PGD(classifier_net, normalizer, delta_threat, attack_loss)
     pgd_kwargs = copy.deepcopy(GLOBAL_ATK_KWARGS)
     params = advtrain.AdversarialAttackParameters(pgd_attack, 1.0,
                             attack_specific_params={'attack_kwargs': pgd_kwargs})
@@ -121,7 +121,7 @@ def build_pgd_linf_stadv_att(classifier_net, normalizer):
     pgd_kwargs = copy.deepcopy(GLOBAL_ATK_KWARGS)
     pgd_kwargs['optimizer_kwargs']['lr'] = 0.001
 
-    pgd_attack = aar.PGD(classifier_net, normalizer, sequence_threat, loss_fxn)
+    pgd_attack = aa.PGD(classifier_net, normalizer, sequence_threat, loss_fxn)
     params = advtrain.AdversarialAttackParameters(pgd_attack, 1.0,
                             attack_specific_params={'attack_kwargs': pgd_kwargs})
     return params
@@ -145,7 +145,7 @@ def build_stadv_linf_attack(classifier_net, normalizer):
     pgd_kwargs = copy.deepcopy(GLOBAL_ATK_KWARGS)
     pgd_kwargs['optimizer_kwargs']['lr'] = 0.001
 
-    pgd_attack = aar.PGD(classifier_net, normalizer, flow_threat, loss_fxn)
+    pgd_attack = aa.PGD(classifier_net, normalizer, flow_threat, loss_fxn)
     params = advtrain.AdversarialAttackParameters(pgd_attack, 1.0,
                             attack_specific_params={'attack_kwargs': pgd_kwargs})
     return params
@@ -175,7 +175,7 @@ def build_rotation_translation_attack(classifier_net, normalizer):
     pgd_kwargs['optimizer_kwargs']['lr'] = 0.001
 
     loss_fxn = plf.VanillaXentropy(classifier_net, normalizer)
-    pgd_attack = aar.PGD(classifier_net, normalizer, sequence_threat,
+    pgd_attack = aa.PGD(classifier_net, normalizer, sequence_threat,
                          loss_fxn)
 
     params = advtrain.AdversarialAttackParameters(pgd_attack, 1.0,
@@ -220,7 +220,7 @@ def build_full_attack(classifier_net, normalizer):
                                   {'adv': 1.0, 'st': 0.05},
                                   negate=True)
 
-    pgd_attack = aar.PGD(classifier_net, normalizer, sequence_threat,
+    pgd_attack = aa.PGD(classifier_net, normalizer, sequence_threat,
                          loss_fxn)
 
     params = advtrain.AdversarialAttackParameters(pgd_attack, 1.0,

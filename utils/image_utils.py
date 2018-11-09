@@ -68,12 +68,18 @@ def show_images(images, normalize=None, ipython=True,
 
     rows = [_ for _ in rows[1:] if _ is not None]
     plt.figure(figsize=figsize, dpi=80, facecolor='w', edgecolor='k')
-    plt.imshow(np.concatenate(rows, 1).transpose(1, 2, 0))
+
+    cat_rows = np.concatenate(rows, 1).transpose(1, 2, 0)
+    imshow_kwargs = {}
+    if cat_rows.shape[-1] == 1: # 1 channel: greyscale
+        cat_rows = cat_rows.squeeze()
+        imshow_kwargs['cmap'] = 'gray'
+
+    plt.imshow(cat_rows, **imshow_kwargs)
+
     if save_npy is not None:
-
-        scipy.misc.toimage(np.concatenate(rows, 1).transpose(1, 2, 0),
-                           cmin=0.0, cmax=1.0).save(save_npy)
-
+        scipy_img = scipy.misc.toimage(cat_rows)
+        scipy_img.save(save_npy)
 
     plt.show()
 

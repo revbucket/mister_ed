@@ -13,7 +13,7 @@ import random
 
 import utils.pytorch_utils as utils
 import utils.image_utils as img_utils
-import adversarial_attacks_refactor as attacks
+import adversarial_attacks as attacks
 import utils.checkpoints as checkpoints
 
 
@@ -263,7 +263,7 @@ class AdversarialTraining(object):
                                  augment 1:1).
         """
         if attack_parameters is None:
-            return inputs, labels
+            return inputs, labels, None, None
 
 
         assert isinstance(attack_parameters, list)

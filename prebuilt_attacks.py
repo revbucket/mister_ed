@@ -23,12 +23,11 @@ import utils.pytorch_utils as utils
 import utils.image_utils as img_utils
 import cifar10.cifar_loader as cifar_loader
 import cifar10.cifar_resnets as cifar_resnets
-import adversarial_attacks as aa
 import adversarial_training as advtrain
 import adversarial_evaluation as adveval
 import utils.checkpoints as checkpoints
 import adversarial_perturbations as ap
-import adversarial_attacks_refactor as aar
+import adversarial_attacks as aa
 import spatial_transformers as st
 
 
@@ -73,7 +72,7 @@ def build_delta_fgsm(model, normalizer, linf_bound=L_INF_BOUND,
 
 
     # Build attack
-    fgsm_attack = aar.FGSM(model, normalizer, delta_threat,
+    fgsm_attack = aa.FGSM(model, normalizer, delta_threat,
                            attack_loss, manual_gpu=manual_gpu)
 
     # Return based on output arg
@@ -120,7 +119,7 @@ def build_delta_pgd(model, normalizer, linf_bound=L_INF_BOUND, manual_gpu=None,
                                          negate=True)
 
     # Build attack
-    pgd_attack = aar.PGD(model, normalizer, delta_threat,
+    pgd_attack = aa.PGD(model, normalizer, delta_threat,
                          attack_loss, manual_gpu=manual_gpu)
 
     # Return based on output arg
@@ -188,7 +187,7 @@ def build_stadv_pgd(model, normalizer, linf_bound=FLOW_LINF, manual_gpu=None,
 
 
     # Build attack
-    pgd_attack = aar.PGD(model, normalizer, flow_threat,
+    pgd_attack = aa.PGD(model, normalizer, flow_threat,
                          attack_loss, manual_gpu=manual_gpu)
 
 
@@ -263,7 +262,7 @@ def build_rot_trans_pgd(model, normalizer, trans_bound=TRANS_LINF,
 
 
     # Build attack
-    pgd_attack = aar.PGD(model, normalizer, sequence_threat,
+    pgd_attack = aa.PGD(model, normalizer, sequence_threat,
                          attack_loss, manual_gpu=manual_gpu)
 
 
@@ -345,7 +344,7 @@ def build_delta_rot_trans_pgd(model, normalizer, delta_bound=L_INF_BOUND,
 
 
     # Build attack
-    pgd_attack = aar.PGD(model, normalizer, sequence_threat,
+    pgd_attack = aa.PGD(model, normalizer, sequence_threat,
                          attack_loss, manual_gpu=manual_gpu)
 
 
@@ -423,7 +422,7 @@ def build_delta_stadv_pgd(model, normalizer, delta_bound=L_INF_BOUND,
     # Build attack
     optimizer = optim.Adam
     optimizer_kwargs = {'lr': 0.001}
-    pgd_attack = aar.PGD(model, normalizer, sequence_threat, loss_fxn, manual_gpu=manual_gpu)
+    pgd_attack = aa.PGD(model, normalizer, sequence_threat, loss_fxn, manual_gpu=manual_gpu)
 
 
     assert output in ['attack', 'params', 'eval']
@@ -518,7 +517,7 @@ def build_delta_stadv_rot_trans_pgd(model, normalizer, delta_bound=L_INF_BOUND,
     # Build attack
     optimizer = optim.Adam
     optimizer_kwargs = {'lr': 0.001}
-    pgd_attack = aar.PGD(model, normalizer, sequence_threat, loss_fxn,
+    pgd_attack = aa.PGD(model, normalizer, sequence_threat, loss_fxn,
                          manual_gpu=manual_gpu)
 
     assert output in ['attack', 'params', 'eval']
@@ -601,7 +600,7 @@ def build_stadv_rot_trans_pgd(model, normalizer,
     # Build attack
     optimizer = optim.Adam
     optimizer_kwargs = {'lr': 0.001}
-    pgd_attack = aar.PGD(model, normalizer, sequence_threat, loss_fxn,
+    pgd_attack = aa.PGD(model, normalizer, sequence_threat, loss_fxn,
                          manual_gpu=manual_gpu)
 
     assert output in ['attack', 'params', 'eval']
