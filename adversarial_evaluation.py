@@ -101,6 +101,9 @@ class EvaluationResult(object):
         ######################################################################
         #  Computes the top 1 accuracy and updates the averageMeter          #
         ######################################################################
+        attack_examples = attack_out[0]
+        pre_adv_labels = attack_out[1]
+
         num_examples = float(attack_examples.shape[0])
 
         attack_accuracy_int = self.attack_params.eval_attack_only(
