@@ -182,7 +182,7 @@ class AdversarialPerturbation(nn.Module):
         if x is None:
             x = self.originals
 
-        return self.forward(utils.safe_var(x)).data
+        return self.forward(x).data
 
     @initialized
     def attach_attr(self, attr_name, attr):
@@ -454,8 +454,7 @@ class DeltaAddition(AdversarialPerturbation):
 
     def setup(self, x):
         super(DeltaAddition, self).setup(x)
-        self.delta = nn.Parameter(utils.safe_tensor(
-                                  torch.zeros_like(x)))
+        self.delta = nn.Parameter(torch.zeros_like(x))
         self.initialized = True
 
     @initialized
@@ -475,8 +474,7 @@ class DeltaAddition(AdversarialPerturbation):
     @initialized
     def make_valid_image(self, x):
         new_delta = self.delta.data
-        change_in_delta = utils.clamp_0_1_delta(new_delta,
-                                                utils.safe_tensor(x))
+        change_in_delta = utils.clamp_0_1_delta(new_delta, x)
         self.delta.data.add_(change_in_delta)
 
     @initialized

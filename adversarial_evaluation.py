@@ -101,8 +101,6 @@ class EvaluationResult(object):
         ######################################################################
         #  Computes the top 1 accuracy and updates the averageMeter          #
         ######################################################################
-        attack_examples = utils.safe_var(attack_out[0])
-        pre_adv_labels = utils.safe_var(attack_out[1])
         num_examples = float(attack_examples.shape[0])
 
         attack_accuracy_int = self.attack_params.eval_attack_only(
@@ -469,7 +467,7 @@ class AdversarialEvaluation(object):
             adv_examples = attack_parameters.attack(inputs, labels)[0]
 
             # Convert to numpy and append to our save buffer
-            adv_data = utils.safe_tensor(adv_examples).cpu().numpy()
+            adv_data = adv_examples.cpu().numpy()
             minibatch_attacks.append(save_xform(adv_data))
 
             # Perform checkpoint if necessary

@@ -15,7 +15,7 @@ import cifar10.cifar_loader as cifar_loader
 import cifar10.cifar_resnets as cifar_resnets
 import adversarial_attacks as aa
 import adversarial_training as advtrain
-import adversarial_perturbation as ap
+import adversarial_perturbations as ap
 
 BATCH_SIZE = config.DEFAULT_BATCH_SIZE
 WORKERS = config.DEFAULT_WORKERS
@@ -33,8 +33,7 @@ WORKERS = config.DEFAULT_WORKERS
 '''
 
 def main_attack_script(attack_examples=None,
-                       show_images=False,
-                       use_gpu=False):
+                       show_images=False):
 
     # Which attacks to do...
     attack_examples = attack_examples or ['FGSM', 'BIM', 'PGD', 'CW2', 'CWLInf']
@@ -44,14 +43,12 @@ def main_attack_script(attack_examples=None,
     ########################################################################
 
     # Initialize CIFAR classifier
-    classifier_net = cifar_loader.load_pretrained_cifar_resnet(flavor=32,
-                                                               use_gpu=use_gpu)
+    classifier_net = cifar_loader.load_pretrained_cifar_resnet(flavor=32)
     classifier_net.eval()
 
     # Collect one minibatch worth of data/targets
     val_loader = cifar_loader.load_cifar_data('val', normalize=False,
-                                              batch_size=16,
-                                              use_gpu=use_gpu)
+                                              batch_size=16)
     ex_minibatch, ex_targets = next(iter(val_loader))
 
     # Differentiable normalizer needed for classification
@@ -218,20 +215,20 @@ def main_attack_script(attack_examples=None,
         CW_DISTANCE_METRIC = 'l2'
         CW_CONFIDENCE = 0.0
 
-        cwl2_loss = plf.CWL2Loss(classifier_net, cifar_normer, kappa=0.0)
-        cwl2_obj = aa.CW(classifier_net, cifar_normer, cwl2_loss,
-                           CW_INITIAL_SCALE_CONSTANT,
-                           num_bin_search_steps=CW_NUM_BIN_SEARCH_STEPS,
-                           num_optim_steps=CW_NUM_OPTIM_STEPS,
-                           distance_metric_type=CW_DISTANCE_METRIC,
-                           confidence=CW_CONFIDENCE)
+        cw_f6loss = lf.CWLossF6
+        delta_threat = ap.ThreatModel(ap.DeltaAddition, {'lp_style': 2,
+                                                         'lp_bound': 3072.0})
+        cwl2_obj = aa.CarliniWagner(classifier_net, cifar_normer, delta_threat,
+                                    lf.L2Regularization, cw_f6loss)
 
 
         cwl2_original_images = ex_minibatch
         cwl2_original_labels = ex_targets
 
         cwl2_output = cwl2_obj.attack(ex_minibatch, ex_targets,
-                                      verbose=True)
+                                   num_bin_search_steps=CW_NUM_BIN_SEARCH_STEPS,
+                                   num_optim_steps=CW_NUM_OPTIM_STEPS,
+                                   verbose=True)
 
         print(cwl2_output['best_dist'])
         cwl2_adv_images = cwl2_output['best_adv_images']
@@ -250,92 +247,6 @@ def main_attack_script(attack_examples=None,
                                                cwl2_adv_images, 4)
 
 
-    ##########################################################################
-    #   CW LINF ATTACK                                                       #
-    ##########################################################################
-
-
-    if 'CWLInf' in attack_examples:
-
-        # Example Carlini Wagner L2 attack on a single minibatch
-        # steps:
-        #   0) initialize hyperparams
-        #   1) setup loss object
-        #   2) build attack object
-        #   3) setup examples to attack
-        #   4) perform attack
-        #   5) evaluate attack
-
-        CW_INITIAL_SCALE_CONSTANT = 0.1
-        CW_NUM_BIN_SEARCH_STEPS = 5
-        CW_NUM_OPTIM_STEPS = 1000
-        CW_DISTANCE_METRIC = 'linf'
-        CW_CONFIDENCE = 0.0
-
-        cwlinf_loss = plf.CWLInfLoss(classifier_net, cifar_normer, kappa=0.0)
-        cwlinf_obj = aa.CW(classifier_net, cifar_normer, cwlinf_loss,
-                           CW_INITIAL_SCALE_CONSTANT,
-                           num_bin_search_steps=CW_NUM_BIN_SEARCH_STEPS,
-                           num_optim_steps=CW_NUM_OPTIM_STEPS,
-                           distance_metric_type=CW_DISTANCE_METRIC,
-                           confidence=CW_CONFIDENCE)
-
-
-        cwlinf_original_images = ex_minibatch
-        cwlinf_original_labels = ex_targets
-
-        cwlinf_output = cwlinf_obj.attack(ex_minibatch, ex_targets,
-                                      verbose=True)
-
-        print(cwlinf_output['best_dist'] * 255.0)
-        cwlinf_adv_images = cwlinf_output['best_adv_images']
-
-
-        cwlinf_accuracy = cwlinf_obj.eval(cwlinf_original_images,
-                                          cwlinf_adv_images,
-                                          cwlinf_original_labels)
-        print("CWLinf ATTACK ACCURACY: ")
-        print("\t Original %% correct:    %s" % cwlinf_accuracy[0])
-        print("\t Adversarial %% correct: %s" % cwlinf_accuracy[1])
-
-        if show_images:
-            img_utils.display_adversarial_2row(classifier_net, cifar_normer,
-                                               cwlinf_original_images,
-                                               cwlinf_adv_images, 4)
-
-
-    ##########################################################################
-    #   URM ATTACK                                                           #
-    ##########################################################################
-
-    if 'URM' in attack_examples:
-
-
-        # Example Uniform Random Method
-        # steps:
-        #   0) initialize hyperparams
-        #   1) setup loss object
-        #   2) build attack object
-        #   3) setup examples to attack
-        #   4) perform attack
-        #   5) evaluate attack
-
-        URM_BOUND = 8.0 / 255.0
-        URM_TRIES = 100
-
-        urm_loss = lf.IncorrectIndicator(classifier_net,
-                                         normalizer=cifar_normer)
-
-        urm_attack = aa.URM(classifier_net, cifar_normer, urm_loss,
-                            use_gpu=use_gpu)
-
-        urm_original_images = ex_minibatch
-        urm_original_labels = ex_targets
-
-        urm_output = urm_attack.attack(ex_minibatch, ex_targets,
-                                       URM_BOUND, num_tries=URM_TRIES)
-
-        import interact
 
 
 ##############################################################################
@@ -353,8 +264,7 @@ def main_defense_script():
     ########################################################################
 
     # Initialize CIFAR classifier
-    classifier_net = cifar_loader.load_pretrained_cifar_resnet(flavor=32,
-                                                               use_gpu=False)
+    classifier_net = cifar_loader.load_pretrained_cifar_resnet(flavor=32)
     classifier_net.eval()
 
     # Differentiable normalizer needed for classification
@@ -416,8 +326,7 @@ def main_evaluation_script():
     # 2) Run the evaluation and print results
 
     # 0
-    classifier_net = cifar_loader.load_pretrained_cifar_resnet(flavor=32,
-                                                               use_gpu=False)
+    classifier_net = cifar_loader.load_pretrained_cifar_resnet(flavor=32)
     cifar_normer = utils.DifferentiableNormalize(mean=config.CIFAR10_MEANS,
                                                  std=config.CIFAR10_STDS)
     val_loader = cifar_loader.load_cifar_data('val', normalize=False)
@@ -463,5 +372,7 @@ def main_evaluation_script():
 
 
 if __name__ == '__main__':
-
+    raise DeprecationWarning("This file is no longer actively maintained. \n"
+                             "Please use a Jupyter notebook for interactive "
+                             "sessions.")
     main_attack_script(['FGSM'], show_images=True)

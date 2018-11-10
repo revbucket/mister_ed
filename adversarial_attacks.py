@@ -52,7 +52,7 @@ class AdversarialAttack(object):
         else:
             self.use_gpu = utils.use_gpu()
         self.validator = lambda *args: None
-        self.threat_model = threat_model
+        self.threat_= threat_model
 
     @property
     def _dtype(self):
@@ -77,10 +77,6 @@ class AdversarialAttack(object):
             tuple of (% of correctly classified original examples,
                       % of correctly classified adversarial examples)
         """
-        ground_examples = utils.safe_var(ground_examples)
-        adversarials = utils.safe_var(adversarials)
-        labels = utils.safe_var(labels)
-
         normed_ground = self.normalizer.forward(ground_examples)
         ground_output = self.classifier_net.forward(normed_ground)
 
@@ -107,8 +103,6 @@ class AdversarialAttack(object):
             (int) number of correctly classified examples
         """
 
-        adversarials = utils.safe_var(adversarials)
-        labels = utils.safe_var(labels)
         normed_advs = self.normalizer.forward(adversarials)
 
         adv_output = self.classifier_net.forward(normed_advs)
@@ -491,7 +485,7 @@ class CarliniWagner(AdversarialAttack):
 
         optimizer.step()
         # return a loss 'average' to determine if we need to stop early
-        return loss.data[0]
+        return loss.item()
 
 
     def _batch_compare(self, example_logits, targets, confidence=0.0,

@@ -66,9 +66,10 @@ def safe_var(entity, **kwargs):
     """ Returns a variable of an entity, which may or may not already be a
         variable
     """
+    raise DeprecationWarning("As of >=pytorch0.4.0 this is no longer necessary")
     if isinstance(entity, Variable):
         return entity
-    elif isinstance(entity, torch.tensor._TensorBase):
+    elif isinstance(entity, torch._C._TensorBase):
         return Variable(entity, **kwargs)
     else:
         raise Exception("Can't cast %s to a Variable" %
@@ -79,6 +80,7 @@ def safe_tensor(entity):
     """ Returns a tensor of an entity, which may or may not already be a
         tensor
     """
+    raise DeprecationWarning("As of >=pytorch0.4.0 this is no longer necessary")
     if isinstance(entity, Variable):
         return entity.data
     elif isinstance(entity, torch.tensor._TensorBase):

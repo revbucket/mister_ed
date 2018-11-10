@@ -379,7 +379,7 @@ class RotationTransform(AffineTransform):
         assert isinstance(x, Variable)
         cos_xform = self.xform_params.cos()
         sin_xform = self.xform_params.sin()
-        zeros = utils.safe_var(torch.zeros_like(self.xform_params))
+        zeros = torch.zeros_like(self.xform_params)
 
         affine_xform = torch.stack([cos_xform, -sin_xform, zeros,
                                     sin_xform, cos_xform,  zeros])

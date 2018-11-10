@@ -192,8 +192,8 @@ class CustomDataSaver(object):
             labels : Variable or Tensor (N) - labels matching the examples
         """
         # First make both examples and labels into numpy arrays
-        examples = utils.safe_tensor(examples).cpu().numpy()
-        labels = utils.safe_tensor(labels).cpu().numpy()
+        examples = examples.cpu().numpy()
+        labels = labels.cpu().numpy()
 
         # Make a name for the files
         random_string = str(random.random())[2:] # DO THIS BETTER WHEN I HAVE INTERNET

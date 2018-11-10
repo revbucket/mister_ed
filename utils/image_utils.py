@@ -44,7 +44,6 @@ def show_images(images, normalize=None, ipython=True,
     # first format the first arg to be hz-stacked numpy arrays
     if not isinstance(images, list):
         images = [images]
-    images = [utils.safe_tensor(image) for image in images]
     images = [np.dstack(image.cpu().numpy()) for image in images]
     image_shape = images[0].shape
     assert all(image.shape == image_shape for image in images)
@@ -123,12 +122,12 @@ def display_adversarial_2row(classifier_net, normalizer, original_images,
         classifier_net.eval() # can never be too safe =)
 
         # classify the originals with top1
-        original_norm_var = normalizer.forward(utils.safe_var(original_images))
+        original_norm_var = normalizer.forward(original_images)
         original_out_logits = classifier_net.forward(original_norm_var)
         _, original_out_classes = original_out_logits.max(1)
 
         # classify the adversarials with top1
-        adv_norm_var = normalizer.forward(utils.safe_var(adversarial_images))
+        adv_norm_var = normalizer.forward(adversarial_images)
         adv_out_logits = classifier_net.forward(adv_norm_var)
         _, adv_out_classes = adv_out_logits.max(1)
 
