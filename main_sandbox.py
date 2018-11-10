@@ -2,6 +2,7 @@
 
 """ Main file that I'll run for experiments and such. VERY VOLATILE!!! """
 from __future__ import print_function
+import warnings
 import os
 import torch
 import torch.nn as nn
@@ -372,7 +373,7 @@ def main_evaluation_script():
 
 
 if __name__ == '__main__':
-    raise DeprecationWarning("This file is no longer actively maintained. \n"
-                             "Please use a Jupyter notebook for interactive "
-                             "sessions.")
+    warnings.warn("This file is no longer actively maintained. \n"
+                   "Please use a Jupyter notebook for interactive sessions",
+                  DeprecationWarning)
     main_attack_script(['FGSM'], show_images=True)
