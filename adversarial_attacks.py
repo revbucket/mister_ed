@@ -52,7 +52,7 @@ class AdversarialAttack(object):
         else:
             self.use_gpu = utils.use_gpu()
         self.validator = lambda *args: None
-        self.threat_= threat_model
+        self.threat_model = threat_model
 
     @property
     def _dtype(self):
