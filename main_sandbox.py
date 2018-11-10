@@ -15,7 +15,7 @@ import cifar10.cifar_loader as cifar_loader
 import cifar10.cifar_resnets as cifar_resnets
 import adversarial_attacks as aa
 import adversarial_training as advtrain
-
+import adversarial_perturbation as ap
 
 BATCH_SIZE = config.DEFAULT_BATCH_SIZE
 WORKERS = config.DEFAULT_WORKERS
@@ -75,18 +75,21 @@ def main_attack_script(attack_examples=None,
 
         FGSM_L_INF = 8.0 / 255.0
 
+        delta_threat = ap.ThreatModel(ap.DeltaAddition, {'lp_style': 'inf',
+                                                 'lp_bound': 8.0 / 255})
+
         fgsm_xentropy_loss = plf.VanillaXentropy(classifier_net,
                                                  normalizer=cifar_normer)
 
         fgsm_attack_obj = aa.FGSM(classifier_net, cifar_normer,
-                                  fgsm_xentropy_loss)
+                                  delta_threat, fgsm_xentropy_loss)
 
         fgsm_original_images = ex_minibatch
         fgsm_original_labels = ex_targets
 
         fgsm_adv_images = fgsm_attack_obj.attack(fgsm_original_images,
                                                  fgsm_original_labels,
-                                                 FGSM_L_INF)
+                                                 FGSM_L_INF).adversarial_tensors()
 
         fgsm_accuracy = fgsm_attack_obj.eval(fgsm_original_images,
                                              fgsm_adv_images,
@@ -167,17 +170,19 @@ def main_attack_script(attack_examples=None,
         pgd_xentropy_loss = plf.VanillaXentropy(classifier_net,
                                                 normalizer=cifar_normer)
 
-        pgd_attack_obj = aa.LInfPGD(classifier_net, cifar_normer,
-                                    pgd_xentropy_loss)
+        delta_threat = ap.ThreatModel(ap.DeltaAddition, {'lp_style': 'inf',
+                                                 'lp_bound': 8.0 / 255})
+
+        pgd_attack_obj = aa.PGD(classifier_net, cifar_normer,
+                                delta_threat, pgd_xentropy_loss)
 
         pgd_original_images = ex_minibatch
         pgd_original_labels = ex_targets
 
         pgd_adv_images = pgd_attack_obj.attack(pgd_original_images,
                                                pgd_original_labels,
-                                               l_inf_bound=PGD_L_INF,
                                                step_size=PGD_STEP_SIZE,
-                                               num_iterations=PGD_NUM_ITER)
+                                               num_iterations=PGD_NUM_ITER).adversarial_tensors()
 
         pgd_accuracy = pgd_attack_obj.eval(pgd_original_images,
                                            pgd_adv_images,
@@ -460,5 +465,3 @@ def main_evaluation_script():
 if __name__ == '__main__':
 
     main_attack_script(['FGSM'], show_images=True)
-
-
