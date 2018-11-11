@@ -292,10 +292,41 @@ class AdversarialTraining(object):
         return inputs, labels, torch.cat(adv_inputs_total, dim=0), coupled
 
 
+    def _l2_adversarial_logit_pairing(self, original_inputs,
+                                      adversarial_examples):
+        """ Used to add extra regularization term in adversarial training.
+            In particular, this does adversarial_logit_pairing:
+                 https://arxiv.org/abs/1803.06373
+        ARGS:
+            original_inputs: tensor (N'xCxHxW) - original training batch
+                            (possibly not full batch size if not doing 1:1
+                             advtraining)
+            adversarial_inputs: tensor (N'xCxHxW) - coupled adversarial examples
+                                i.e., i^th (out of N') image in this is the adv
+                                example for the i^th image of the
+                                original_inputs arg
+        RETURNS:
+            Scalar Variable that can be used to backprop (backprop through
+            classifier_net's parameters only!)
+        """
+
+        # First run each of these through the classifier:
+        original_outputs = self.classifier_net.forward(
+                                               self.normalizer(original_inputs))
+        adversarial_outputs = self.classifier_net.forward(
+                                          self.normalizer(adversarial_examples))
+
+        # Then take and return the l2 difference between these outputs
+
+        # pytorch version stuff:
+        l2_loss = nn.MSELoss(size_average=True)
+        return l2_loss(original_outputs, adversarial_outputs.detach())
+
+
     def train(self, data_loader, num_epochs, train_loss,
               optimizer=None, attack_parameters=None,
               verbosity='medium', starting_epoch=0, adversarial_save_dir=None,
-              regularize_adv_scale=None):
+              regularize_adv=None):
         """ Modifies the NN weights of self.classifier_net by training with
             the specified parameters s
         ARGS:
@@ -321,12 +352,20 @@ class AdversarialTraining(object):
             adversarial_save_dir: string or None - if not None is the name of
                                   the directory we save adversarial images to.
                                   If None, we don't save adversarial images
-            regularize_adv_scale : float > 0 or None - if not None we do L1 loss
+            regularize_adv : dict or None - if not None, has keys:
+                            {'scale' (mandatory): float of regularization
+                                                  constant
+                             'criterion' (optional): function mapping coupled
+                                            (original_inputs), (adv_examples) to
+                                            a scalar value. Defualt is l2
+                                             adversarial logit pairing (see
+                                             _l2_adversarial_logit_pairing
+                                             method)}
+
+            float > 0 or None - if not None we do L1 loss
                                    between the logits of the adv examples and
                                    the inputs used to generate them. This is the
                                    scale constant of that loss
-            stdout_prints: bool - if True we print out using stdout so we don't
-                                  spam logs like crazy
 
         RETURNS:
             None, but modifies the classifier_net's weights
@@ -373,10 +412,13 @@ class AdversarialTraining(object):
         # setup loss fxn, optimizer
         optimizer = optimizer or optim.Adam(self.classifier_net.parameters(),
                                             lr=0.001)
+        scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=3, gamma=0.1)
 
         # setup regularize adv object
-        if regularize_adv_scale is not None:
-            regularize_adv_criterion = nn.L1Loss()
+        if regularize_adv is not None:
+            reg_adv_scale = regularize_adv['scale']
+            if 'criterion' not in regularize_adv:
+                reg_adv_crit = self._l2_adversarial_logit_pairing
 
         ######################################################################
         #   Training loop                                                    #
@@ -407,14 +449,9 @@ class AdversarialTraining(object):
                 outputs = self.classifier_net.forward(self.normalizer(inputs))
                 loss = train_loss.forward(outputs, labels)
 
-                if regularize_adv_scale is not None:
-                    # BE SURE TO 'DETACH' THE ADV_INPUTS!!!
-                    reg_adv_loss = regularize_adv_criterion(adv_examples,
-                                                      Variable(adv_inputs.data))
-                    print(float(loss), regularize_adv_scale * float(reg_adv_loss))
-                    loss = loss + regularize_adv_scale * reg_adv_loss
-
-
+                if regularize_adv is not None:
+                    reg_adv_loss = reg_adv_crit(adv_inputs, adv_examples)
+                    loss = loss + reg_adv_scale * reg_adv_loss
                 # backward step
                 loss.backward()
                 optimizer.step()
