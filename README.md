@@ -11,7 +11,7 @@ The remainder of this README will focus on how to set up `mister_ed` to build yo
 ## Setting up `mister_ed`
 
 ### Dependencies
-This library uses [Pytorch](http://pytorch.org/) >=0.3 on python 2,3 to perform differentiation and other common computation required by machine learning models. Follow the link above to perform installation. It is also recommended that you leverage GPU's to speed up computation, though generating adversarial attacks (particularly on MNIST/CIFAR10) are typically less expensive than classical neural net training.
+This library uses [Pytorch](http://pytorch.org/) >=0.4 on python 2,3 to perform differentiation and other common computation required by machine learning models. Follow the link above to perform installation. It is also recommended that you leverage GPU's to speed up computation, though generating adversarial attacks (particularly on MNIST/CIFAR10) are typically less expensive than classical neural net training.
 
 ### Installation 
 The best way to set up `mister_ed` right now is to clone this git repository. 
