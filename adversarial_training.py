@@ -319,7 +319,7 @@ class AdversarialTraining(object):
         # Then take and return the l2 difference between these outputs
 
         # pytorch version stuff:
-        l2_loss = nn.MSELoss(size_average=True)
+        l2_loss = nn.MSELoss()
         return l2_loss(original_outputs, adversarial_outputs.detach())
 
 
@@ -419,6 +419,8 @@ class AdversarialTraining(object):
             reg_adv_scale = regularize_adv['scale']
             if 'criterion' not in regularize_adv:
                 reg_adv_crit = self._l2_adversarial_logit_pairing
+            else:
+                reg_adv_crit = regularize_adv['criterion']
 
         ######################################################################
         #   Training loop                                                    #
