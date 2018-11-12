@@ -18,6 +18,9 @@ The best way to set up `mister_ed` right now is to clone this git repository.
 ```
 git clone https://github.com/revbucket/mister_ed
 ```
+and if you manage python packages with pip, the requirements can be installed via
+``` pip install -r requirements.txt ```
+
 Feel free to fork and play with the code. 
 
 ### Config + CIFAR10 setup 
