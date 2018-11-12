@@ -23,7 +23,14 @@ import numpy as np
 import math
 import config
 import torchvision.datasets as datasets
-import urllib2
+
+try: #This block from: https://stackoverflow.com/a/17510727
+    # For Python 3.0 and later
+    from urllib.request import urlopen
+except ImportError:
+    # Fall back to Python 2's urllib2
+    from urllib2 import urlopen
+
 import hashlib
 print("...imports look okay!")
 
@@ -78,7 +85,7 @@ def load_cifar_classifiers():
 
     try:
         os.makedirs(config.MODEL_PATH)
-    except OSError, err:
+    except OSError as err:
         if not os.path.isdir(config.MODEL_PATH):
             raise err
 
@@ -108,7 +115,7 @@ def load_cifar_classifiers():
     for name in lacking_models:
         link = LINK_DEPOT[name]
         print("Downloading %s..." % name)
-        u = urllib2.urlopen(link)
+        u = urlopen(link)
         data = u.read()
         u.close()
         filename = os.path.join(config.MODEL_PATH, name)
@@ -117,7 +124,7 @@ def load_cifar_classifiers():
 
         try:
             assert file_hash(filename) == HASH_DEPOT[name]
-        except AssertionError, err:
+        except AssertionError as err:
             print("Something went wrong downloading %s" % name)
             os.remove(filename)
             raise err
