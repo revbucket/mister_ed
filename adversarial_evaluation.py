@@ -240,7 +240,8 @@ class IdentityEvaluation(EvaluationResult):
     """ Subclass of evaluation result that just computes top1 accuracy for the
         ground truths (attack perturbation is the identity)
     """
-    def __init__(self, classifier_net, normalizer, manual_gpu=False):
+    def __init__(self, classifier_net, normalizer, manual_gpu=False,
+                 loss_fxn=None):
         self.classifier_net = classifier_net
         self.normalizer = normalizer
         if manual_gpu is not None:
@@ -248,23 +249,32 @@ class IdentityEvaluation(EvaluationResult):
         else:
             self.use_gpu = utils.use_gpu()
 
-        self.results = {'top1': utils.AverageMeter()}
+        self.loss_fxn = loss_fxn or nn.CrossEntropyLoss()
+        self.results = {'top1': utils.AverageMeter(),
+                        'avge_loss_value': utils.AverageMeter()}
+
+
 
     def set_gpu(self, use_gpu):
         pass
 
     def eval(self, examples, labels):
-        assert list(self.results.keys()) == ['top1']
-        ground_avg = self.results['top1']
+        assert list(self.results.keys()) == ['top1', 'avg_loss_value']
+
         ground_output = self.classifier_net(self.normalizer(Variable(examples)))
         minibatch = float(examples.shape[0])
 
-        ground_accuracy_int = utils.accuracy_int(ground_output,
+        # Compute accuracy
+        ground_avg = self.results['top1']
+        minibatch_accuracy_int = utils.accuracy_int(ground_output,
                                                 Variable(labels), topk=1)
-        ground_avg.update(ground_accuracy_int / minibatch,
+        ground_avg.update(minibatch_accuracy_int / minibatch,
                           n=int(minibatch))
 
-
+        # Compute loss
+        ground_avg_loss = self.results['avg_loss_value']
+        minibatch_loss = float(self.loss_fxn(ground_output, labels))
+        ground_avg_loss.update(minibatch_loss, n=(int(minibatch)))
 
 
 
