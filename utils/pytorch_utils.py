@@ -592,7 +592,7 @@ class TrainingLogger(object):
             self.series[name] = []
 
 
-    def linearize_series(self, name, return_keys=False):
+    def sort_series(self, name, return_keys=False):
         """ Simply returns the series of specified name sorted by epoch and then
             minibatch.
         ARGS:

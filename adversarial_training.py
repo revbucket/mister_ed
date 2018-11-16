@@ -502,7 +502,7 @@ class AdversarialTraining(object):
                     logger.log('training_loss', epoch, i + 1,
                                running_loss_log / float(running_loss_log_mb))
                     running_loss_log = 0.0
-                    running_loss_log_mb += 1
+                    running_loss_log_mb = 0
 
             # end_of_epoch
             if epoch % verbosity_epoch == 0:
