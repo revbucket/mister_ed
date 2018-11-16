@@ -198,6 +198,10 @@ class AdversarialTraining(object):
         self.log_adv = None
         self.log_epoch = None
 
+    def reset_logger(self):
+        """ Clears the self.logger instance - useful occasionally """
+        self.logger = utils.TrainingLogger()
+
 
     def set_verbosity_loglevel(self, level,
                                verbosity_or_loglevel='verbosity'):
@@ -380,12 +384,12 @@ class AdversarialTraining(object):
         assert isinstance(num_epochs, int)
 
         if attack_parameters is not None:
-            if not isinstance(attack_parameters, list):
-                attack_parameters = [attack_parameters]
+            if not isinstance(attack_parameters, dict):
+                attack_parameters = {'attack': attack_parameters}
 
 
             # assert that the adv attacker uses the NN that's being trained
-            for param in attack_parameters:
+            for param in attack_parameters.values():
                 assert (param.adv_attack_obj.classifier_net ==
                         self.classifier_net)
 
@@ -394,7 +398,7 @@ class AdversarialTraining(object):
         if self.use_gpu:
             self.classifier_net.cuda()
         if attack_parameters is not None:
-            for param in attack_parameters:
+            for param in attack_parameters.values():
                 param.set_gpu(self.use_gpu)
 
         # Verbosity parameters
@@ -409,6 +413,9 @@ class AdversarialTraining(object):
         assert loglevel in ['low', 'medium', 'high', 'snoop', None]
         if logger is None:
             logger = self.logger
+        if logger.data_count() > 0:
+            print("WARNING: LOGGER IS NOT EMPTY! BE CAREFUL!")
+        logger.add_series('training_loss')        
         for key in (attack_parameters or {}).keys():
             logger.add_series(key)
 
@@ -438,14 +445,14 @@ class AdversarialTraining(object):
         ######################################################################
 
         for epoch in range(starting_epoch + 1, num_epochs + 1):
-            running_loss_print = 0.0
-            running_loss_log = 0.0
+            running_loss_print, running_loss_print_mb = 0.0, 0
+            running_loss_log, running_loss_log_mb = 0.0, 0
             for i, data in enumerate(data_loader, 0):
                 inputs, labels = data
                 if self.use_gpu:
                     inputs = inputs.cuda()
                     labels = labels.cuda()
-
+                    
 
                 # Build adversarial examples
                 attack_out = self._attack_subroutine(attack_parameters,
@@ -478,18 +485,24 @@ class AdversarialTraining(object):
                 # print things
 
                 running_loss_print += float(loss.data)
+                running_loss_print_mb +=1
                 if (verbosity_level >= 1 and
                     i % verbosity_minibatch == verbosity_minibatch - 1):
                     print('[%d, %5d] loss: %.6f' %
-                          (epoch, i + 1, running_loss_print))
+                          (epoch, i + 1, running_loss_print /
+                                 float(running_loss_print_mb)))
                     running_loss_print = 0.0
+                    running_loss_print_mb = 0
 
                 # log things
                 running_loss_log += float(loss.data)
-                if (loglevel_level >= 1 and
+                running_loss_log_mb += 1
+                if (loglevel_level >= 1 and                    
                     i % loglevel_minibatch == loglevel_minibatch - 1):
-                    logger.log('training_loss', epoch, i + 1, running_loss_log)
+                    logger.log('training_loss', epoch, i + 1,
+                               running_loss_log / float(running_loss_log_mb))
                     running_loss_log = 0.0
+                    running_loss_log_mb += 1
 
             # end_of_epoch
             if epoch % verbosity_epoch == 0:

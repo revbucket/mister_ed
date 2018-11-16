@@ -568,7 +568,7 @@ class DifferentiableNormalize(Function):
 ##############################################################################
 
 
-def TrainingLogger(object):
+class TrainingLogger(object):
 
     def __init__(self):
         """ Unified object to keep track of training data at a specified logging
@@ -578,14 +578,18 @@ def TrainingLogger(object):
         """
         self.series = {}
 
+    def data_count(self):
+        """ Returns the number of data points in this logger instance """
+        return sum(len(_) for _ in self.series.values())
+
 
     def add_series(self, name):
         """ Adds the name of a 'data series' where each data series is a list
             of data-entries, where each data-entry is of the form
             ((epoch, minibatch), data-value ) [and data-value is a float]
         """
-        assert name not in self.series
-        self.series[name] = set()
+        if name not in self.series:
+            self.series[name] = []
 
 
     def linearize_series(self, name, return_keys=False):
@@ -604,7 +608,7 @@ def TrainingLogger(object):
 
         sorted_series = sorted(data_series, key=lambda p: p[0])
 
-        if return_keys:
+        if return_keys is False:
             return [_[1] for _ in sorted_series]
         else:
             return sorted_series
@@ -614,7 +618,7 @@ def TrainingLogger(object):
         return self.series[name]
 
 
-    def log_datapoint(sef, name, data_tuple):
+    def log_datapoint(self, name, data_tuple):
         """ Logs the full data point
         ARGS:
             name: string - name of existing series in self.series
@@ -622,6 +626,7 @@ def TrainingLogger(object):
         RETURNS:
             None
         """
+        self.series[name].append(data_tuple)
 
     def log(self, name, epoch, minibatch, value):
         """ Logs the data point by specifying each of epoch, minibatch, value
