@@ -559,3 +559,79 @@ class DifferentiableNormalize(Function):
 
 
 
+
+
+##############################################################################
+#                                                                            #
+#                       TRAINING LOGGER                                      #
+#                                                                            #
+##############################################################################
+
+
+def TrainingLogger(object):
+
+    def __init__(self):
+        """ Unified object to keep track of training data at a specified logging
+            level. Namely this tracks ground accuracy, loss and attack accuracy
+            for each attack incorporated into adversarial training.
+            Will ultimately contain plotting techniques too (TODO!)
+        """
+        self.series = {}
+
+
+    def add_series(self, name):
+        """ Adds the name of a 'data series' where each data series is a list
+            of data-entries, where each data-entry is of the form
+            ((epoch, minibatch), data-value ) [and data-value is a float]
+        """
+        assert name not in self.series
+        self.series[name] = set()
+
+
+    def linearize_series(self, name, return_keys=False):
+        """ Simply returns the series of specified name sorted by epoch and then
+            minibatch.
+        ARGS:
+            name: string - name of exsiting series in self.series
+            return_keys: bool - if True, the output list is like
+                         [((epoch, minibatch), val), ...]
+                         and if False, it's just like [val, ... val...]
+        RETURNS:
+            sorted list of outputs, the exact form of which is determined by
+            the value of return_keys
+        """
+        data_series = self.series[name]
+
+        sorted_series = sorted(data_series, key=lambda p: p[0])
+
+        if return_keys:
+            return [_[1] for _ in sorted_series]
+        else:
+            return sorted_series
+
+    def get_series(self, name):
+        """ simple getter method for the given named data series """
+        return self.series[name]
+
+
+    def log_datapoint(sef, name, data_tuple):
+        """ Logs the full data point
+        ARGS:
+            name: string - name of existing series in self.series
+            data_tuple : tuple of form ((epoch, minibatch), value)
+        RETURNS:
+            None
+        """
+
+    def log(self, name, epoch, minibatch, value):
+        """ Logs the data point by specifying each of epoch, minibatch, value
+        ARGS:
+            name : string - name of existing series in self.series
+            epoch: int - which epoch of training we're logging
+            minibatch : int - which minibatch of training we're logging
+            value : <unspecified, but preferably float> - value we're logging
+        """
+        self.log_datapoint(name, ((epoch, minibatch), value))
+
+
+
