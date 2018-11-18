@@ -242,13 +242,48 @@ class AdversarialPerturbation(nn.Module):
         assert self.perturbation_params == other.perturbation_params
         assert other.initialized
 
+
     @initialized
-    def collect_successful(self, classifier_net, normalizer):
+    def scatter_perturbation(self, scatter_size, mask):
+        """ Takes a perturbation over examples of shape NxCxHxW and scatters
+            them into a perturbation for examples of shape N'xCxHxW where N' > N
+            The 'originals' for unscattered indices in the returned perturbation
+            are zeros for unscattered, and the perturbation params are the
+            identity params
+        ARGS:
+            scatter_size : int - the number of examples the scattering maps into
+            mask: int[] - list of indices that each index of self maps into.
+                          Should be sorted and unique
+        RETURNS: Subclasses will return a perturbation of the same type, but
+                 over a larger set
+                 This class just returns the scattered
+        """
+        assert scatter_size > self.num_examples
+        assert len(mask) == self.num_examples
+        assert sorted(set(mask)) == mask # sorted + unique
+
+        # Also generate the scat
+        scattered_originals = utils.scatter_expand(self.originals,
+                                                   scatter_size, mask)
+        return scattered_originals
+
+
+    @initialized
+    def collect_successful(self, classifier_net, normalizer, return_idxs=False):
         """ Returns a list of [adversarials, originals] of the SUCCESSFUL
             attacks only, according to the given classifier_net, normalizer
             SUCCESSFUL here means that the adversarial is different
         ARGS:
-            TODO: fill in when I'm not in crunchtime
+            classifier_net : nn.Module subclass - neural net that is the
+                             relevant classifier
+            normalizer : DifferentiableNormalize object - object to convert
+                         input data to mean-zero, unit-var examples
+            return_idxs : boolean - if True, we just return the indices of
+                                    successful attacks
+        RETURNS:
+            [adversarial_tensors, originals] for the successful attacks if
+            return_idxs is True, else just the indices of the successful attacks
+
         """
 
         assert self.originals is not None
@@ -266,6 +301,9 @@ class AdversarialPerturbation(nn.Module):
         idxs = torch.LongTensor(idxs)
         if self.originals.is_cuda:
             idxs = idxs.cuda()
+
+        if return_idxs:
+            return idxs
 
         return [torch.index_select(self.adversarial_tensors(), 0, idxs),
                 torch.index_select(self.originals, 0, idxs)]
@@ -323,7 +361,8 @@ class AdversarialPerturbation(nn.Module):
         return {'adversarial': torch.index_select(self.adversarial_tensors(),
                                                   0, idxs),
                 'originals': torch.index_select(self.originals, 0, idxs),
-                'num_correctly_classified': num_correctly_classified}
+                'num_correctly_classified': num_correctly_classified,
+                'idxs': idxs}
 
 
 
@@ -511,6 +550,19 @@ class DeltaAddition(AdversarialPerturbation):
                                       new_delta)
         return new_perturbation
 
+    @initialized
+    def scatter_perturbation(self, scatter_size, mask):
+        scattered_originals = super(DeltaAddition, self)\
+                                .scatter_perturbation(scatter_size, mask)
+        new_perturbation = DeltaAddition(self.threat_model,
+                                         self.perturbation_params)
+        new_perturbation.setup(scattered_originals)
+        scattered_params = utils.scatter_expand(self.delta,
+                                                scatter_size, mask)
+        new_perturbation.add_to_params(scattered_params)
+
+
+        return new_perturbation
 
     def forward(self, x):
         if not self.initialized:
@@ -610,6 +662,27 @@ class ParameterizedXformAdv(AdversarialPerturbation):
         new_xform = self.xform.merge_xform(other.xform, self_mask)
         new_perturbation._merge_setup(self.num_examples, new_xform)
 
+        return new_perturbation
+
+
+    @initialized
+    def scatter_perturbation(self, scatter_size, mask):
+        scattered_originals = super(ParameterizedXformAdv, self)\
+                                .scatter_perturbation(scatter_size, mask)
+        example_shape = scattered_originals.shape[1:]
+        new_perturbation = DeltaAddition(self.threat_model,
+                                         self.perturbation_params)
+        new_perturbation.setup(scattered_originals)
+
+        # Now have to merge the parameters
+
+        identity_el = new_perturbation.xform.identity_params(1,
+                                                           *example_shape)[0]
+
+        scattered_params = utils.scatter_expand(self.xform.xform_params,
+                                                scatter_size, mask,
+                                                identity_el=identity_el)
+        new_perturbation.xform.xform_params = nn.Parameter(scattered_params)
         return new_perturbation
 
 
@@ -754,6 +827,27 @@ class SequentialPerturbation(AdversarialPerturbation):
 
         return new_perturbation
 
+
+    @initialized
+    def scatter_perturbation(self, scatter_size, mask):
+        scattered_originals = super(SequentialPerturbation, self).\
+                                scatter_perturbation(scatter_size, mask)
+
+        # First scatter on each component perturbation
+        new_pipeline = []
+        for layer in self.pipeline:
+            new_pipeline.append(layer.scatter_perturbation(scatter_size, mask))
+
+
+        # Then build the new perturbation object
+        layer_params, global_params = self.perturbation_params
+        new_perturbation = SequentialPerturbation(self.threat_model,
+                                                layer_params,
+                                                global_parameters=global_params,
+                                                preinit_pipeline=new_pipeline)
+        new_perturbation._merge_setup(scatter_size)
+
+        return new_perturbation
 
 
     def forward(self, x, layer_slice=None):

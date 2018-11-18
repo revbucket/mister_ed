@@ -402,6 +402,37 @@ def fold_mask(x, y, mask):
 
     return output
 
+def scatter_expand(originals, scatter_size, mask, identity_el=None):
+    """ Takes original tensor into larger size
+    ARGS:
+        originals : tensor of size NxCxHxW
+        scatter_size : int - the number of examples the scattering maps into
+        mask: int[] - list of indices that each index of self maps into.
+                      Should be sorted and unique
+    RETURNS:
+        tensor of shape scatter_size x CxHxW
+    """
+
+    original_shape = originals.shape
+    num_examples = original_shape[0]
+    assert scatter_size > num_examples
+    assert len(mask) == num_examples
+    assert sorted(set(mask)) == mask # sorted + unique
+    mask_set = set(mask)
+    # TODO: probably a way faster way to do this with some matmul stuff
+    if identity_el is None:
+        identity_el = torch.zeros(*original_shape[1:])
+
+    stacked = []
+    next_original_idx = 0
+    for i in range(scatter_size):
+        if i in mask_set:
+            stacked.append(originals[next_original_idx])
+            next_original_idx += 1
+        else:
+            stacked.append(identity_el)
+    return torch.stack(stacked)
+
 
 ###############################################################################
 #                                                                             #

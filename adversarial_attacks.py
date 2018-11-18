@@ -719,36 +719,4 @@ class CarliniWagner(AdversarialAttack):
         return perturbation
 
 
-###############################################################################
-#                                                                             #
-#                               ATTACK BUNDLING                               #
-#                                                                             #
-###############################################################################
-
-
-class AttackBundle(AdversarialAttack):
-    def __init__(self, classifier_net, normalizer, threat_model,
-                 goal='misclassify', bundled_attacks manual_gpu=None):
-        """ These need to be on the same threat_model.
-            It's a bit more complicated to compute mixed-threat-model attacks,
-            so for the time being let's just assume all attacks need to have
-            the same threat model
-        """
-        super(AttackBundle, self).__init__(classifier_net, normalizer,
-                                           threat_model, manual_gpu=manual_gpu)
-
-        self.set_goal(goal)
-
-    def set_goal(self, goal):
-        """ Sets the goal. There's two types of goals: to cause a
-            misclassification or maximize loss. If our goal is to misclassify,
-            we'll stop upon the first attack that misclassifies
-        """
-        assert goal in ['misclassify', 'max_loss', 'min_perturbation']
-        self.goal = goal
-
-
-    def attack(self, examples, labels):
-
-
 
