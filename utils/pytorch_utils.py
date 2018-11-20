@@ -423,8 +423,9 @@ def scatter_expand(originals, scatter_size, mask, identity_el=None):
     # TODO: probably a way faster way to do this with some matmul stuff
     if identity_el is None:
         identity_el = torch.zeros(*original_shape[1:])
-        if originals.cuda:
+        if originals.is_cuda:
             identity_el = identity_el.cuda()
+
     stacked = []
     next_original_idx = 0
     for i in range(scatter_size):
