@@ -417,18 +417,14 @@ def scatter_expand(originals, scatter_size, mask, identity_el=None):
     num_examples = original_shape[0]
     assert scatter_size > num_examples
     assert len(mask) == num_examples
-    try:
-        assert all(isinstance(_, int) for _ in mask)
-    except:
-        for el in mask:
-            print(el, type(el), isinstance(el, int))
-        asotneuhsnu
+    assert all(isinstance(_, int) for _ in mask)
     assert sorted(set(mask)) == mask # sorted + unique
     mask_set = set(mask)
     # TODO: probably a way faster way to do this with some matmul stuff
     if identity_el is None:
         identity_el = torch.zeros(*original_shape[1:])
-
+        if originals.cuda:
+            identity_el = identity_el.cuda()
     stacked = []
     next_original_idx = 0
     for i in range(scatter_size):

@@ -119,9 +119,10 @@ class AttackBundle(aa.AdversarialAttack):
         fail_set = full_set - success_set
         fail_longtensor = torch.LongTensor(sorted(fail_set))
         if perturbation.originals.is_cuda:
-            fail_longtensor.cuda()
+            fail_longtensor = fail_longtensor.cuda()
 
         default_norm = perturbation.perturbation_norm()
+
         if len(fail_longtensor) > 0:
             default_norm.index_fill_(0, fail_longtensor, MAX_VAL)
         return default_norm
