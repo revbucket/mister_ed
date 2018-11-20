@@ -269,101 +269,63 @@ class AdversarialPerturbation(nn.Module):
 
 
     @initialized
-    def collect_successful(self, classifier_net, normalizer, return_idxs=False):
-        """ Returns a list of [adversarials, originals] of the SUCCESSFUL
-            attacks only, according to the given classifier_net, normalizer
-            SUCCESSFUL here means that the adversarial is different
+    def collect_successful(self, classifier_net, normalizer,
+                           success_def='alter_top_logit', topk=None,
+                           labels=None):
+        """ Returns an object with the original examples, adversarial examples,
+            and indices of successful attacks, where the definition if success
+            is provided as an argument. Success can be either to 'misclassify'
+            or 'alter_top_logit':
+            'misclassify' := adversarial examples have a different topk logit
+                             than the provided labels
+            'alter_top_logit' := adversarial examples have a different top-1
+                                 logit than the original examples
         ARGS:
             classifier_net : nn.Module subclass - neural net that is the
                              relevant classifier
             normalizer : DifferentiableNormalize object - object to convert
                          input data to mean-zero, unit-var examples
-            return_idxs : boolean - if True, we just return the indices of
-                                    successful attacks
+            success_def : string - must be 'misclassify', 'alter_top_logit'
+
+
+
         RETURNS:
-            [adversarial_tensors, originals] for the successful attacks if
-            return_idxs is True, else just the indices of the successful attacks
-
-        """
-
-        assert self.originals is not None
-        adversarials = Variable(self.adversarial_tensors())
-        originals = Variable(self.originals)
-
-        adv_out = torch.max(classifier_net(normalizer(adversarials)), 1)[1]
-        out = torch.max(classifier_net(normalizer(originals)), 1)[1]
-        adv_idx_bytes = adv_out != out
-        idxs = []
-        for idx, el in enumerate(adv_idx_bytes):
-            if float(el) > 0:
-                idxs.append(idx)
-
-        idxs = torch.LongTensor(idxs)
-        if self.originals.is_cuda:
-            idxs = idxs.cuda()
-
-        if return_idxs:
-            return idxs
-
-        return [torch.index_select(self.adversarial_tensors(), 0, idxs),
-                torch.index_select(self.originals, 0, idxs)]
-
-    @initialized
-    def collect_adversarially_successful(self, classifier_net, normalizer,
-                                         labels):
-        """ Returns an object containing the SUCCESSFUL attacked examples,
-            their corresponding originals, and the number of misclassified
-            examples
-        ARGS:
-            classifier_net : nn.Module subclass - neural net that is the
-                             relevant classifier
-            normalizer : DifferentiableNormalize object - object to convert
-                         input data to mean-zero, unit-var examples
-            labels : Variable (longTensor N) - correct labels for classification
-                     of self.originals
-        RETURNS:
-            dict with structure:
-            {'adversarials': Variable(N'xCxHxW) - adversarial perturbation
-                            applied
-             'originals': Variable(N'xCxHxW) - unperturbed examples that
-                                               were correctly classified AND
-                                               successfully attacked
-             'num_correctly_classified': int - number of correctly classified
-                                               unperturbed examples
+            {'adversarials': N'xCxHxW tensor of SUCCESSFUL AE's,
+             'originals': N'xCxHxW tensor of CORRESPONDING ORIGINAL examples
+             'success_idxs': indices (out of original N examples) of SUCCESSFUL
+                             AE's
             }
         """
+
+        # Safety check
         assert self.originals is not None
+        assert success_def in ['misclassify', 'alter_top_logit']
+        if success_def == 'misclassify':
+            if topk is None:
+                topk = (1,)
+            assert labels is not None
+
+        # Gather tensors
         adversarials = Variable(self.adversarial_tensors())
         originals = Variable(self.originals)
 
-        adv_out = torch.max(classifier_net(normalizer(adversarials)), 1)[1]
-        out = torch.max(classifier_net(normalizer(originals)), 1)[1]
+        # Run adversarials through the net
+        adv_out = classifier_net(normalizer(adversarials))
+        if success_def == 'alter_top_logit':
+            labels = torch.max(classifier_net(normalizer(originals)), 1)[1]
 
-        # First take a subset of correctly classified originals
-        correct_idxs = (out == labels) # correctly classified idxs
-        adv_idx_bytes = (adv_out != out) # attacked examples
+        correctly_class_idxs = set(utils.accuracy(adv_out, labels,
+                                                   return_correct_idxs=True)[1])
+        success_idxs = torch.LongTensor([_ for _ in range(self.num_examples)
+                                         if _ not in correctly_class_idxs])
 
-        num_correctly_classified = int(sum(correct_idxs))
-
-        adv_idxs = adv_idx_bytes * correct_idxs
-
-
-        idxs = []
-        for idx, el in enumerate(adv_idxs):
-            if float(el) > 0:
-                idxs.append(idx)
-
-        idxs = torch.LongTensor(idxs)
         if self.originals.is_cuda:
-            idxs = idxs.cuda()
+            success_idxs = success_idxs.cuda()
 
-
-        return {'adversarial': torch.index_select(self.adversarial_tensors(),
-                                                  0, idxs),
-                'originals': torch.index_select(self.originals, 0, idxs),
-                'num_correctly_classified': num_correctly_classified,
-                'idxs': idxs}
-
+        return {'adversarials': self.adversarial_tensors().index_select(0,
+                                                              success_idxs),
+                'originals': self.originals.index_select(0, success_idxs),
+                'success_idxs': success_idxs}
 
 
     @initialized
@@ -384,7 +346,10 @@ class AdversarialPerturbation(nn.Module):
         if successful_only:
             assert classifier_net is not None
             assert normalizer is not None
-            advs, origs = self.collect_successful(classifier_net, normalizer)
+
+            successful = self.collect_successful(classifier_net, normalizer)
+            advs = successful['adversarials']
+            origs = successful['originals']
         else:
             advs = self.adversarial_tensors()
             origs = self.originals

@@ -417,6 +417,12 @@ def scatter_expand(originals, scatter_size, mask, identity_el=None):
     num_examples = original_shape[0]
     assert scatter_size > num_examples
     assert len(mask) == num_examples
+    try:
+        assert all(isinstance(_, int) for _ in mask)
+    except:
+        for el in mask:
+            print(el, type(el), isinstance(el, int))
+        asotneuhsnu
     assert sorted(set(mask)) == mask # sorted + unique
     mask_set = set(mask)
     # TODO: probably a way faster way to do this with some matmul stuff
@@ -495,7 +501,7 @@ def accuracy_int(output, target, topk=1):
     return int(correct.data.sum())
 
 
-def accuracy(output, target, topk=(1,)):
+def accuracy(output, target, topk=(1,), return_correct_idxs=False):
     """Computes the precision@k for the specified values of k"""
     maxk = max(topk)
     batch_size = target.size(0)
@@ -508,7 +514,15 @@ def accuracy(output, target, topk=(1,)):
     for k in topk:
         correct_k = correct[:k].view(-1).float().sum(0)
         res.append(correct_k.mul_(100.0 / batch_size))
-    return res
+
+    if return_correct_idxs:
+        correct_bytes = correct.sum(dim=0)
+        correct_idxs = [i for i in range(len(correct_bytes))
+                        if correct_bytes[i] > 0]
+
+        return res, correct_idxs
+    else:
+        return res
 
 
 

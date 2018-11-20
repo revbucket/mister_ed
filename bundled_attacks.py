@@ -10,7 +10,7 @@ import adversarial_perturbations as ap
 import adversarial_attacks as aa
 import adversarial_training as advtrain
 
-
+MAX_VAL = 1e20
 
 
 class AttackBundle(aa.AdversarialAttack):
@@ -61,8 +61,7 @@ class AttackBundle(aa.AdversarialAttack):
         RETURNS:
             None
         """
-        assert goal in ['misclassify', 'max_loss', 'min_perturbation',
-                        'min_successful_perturbation']
+        assert goal in ['misclassify', 'max_loss', 'min_perturbation']
         self.goal = goal
 
         if goal_params is not None:
@@ -76,8 +75,7 @@ class AttackBundle(aa.AdversarialAttack):
         elif self.goal == 'max_loss':
             # the loss function we want to maximize
             self.goal_params = self._default_loss_for_max_loss
-        elif self.goal in ['min_perturbation',
-                           'min_successful_perturbation']:
+        elif self.goal == 'min_perturbation':
             # the perturbation norm we want to minimize
             self.goal_params = self._default_norm_for_min_perturbation
         else:
@@ -97,16 +95,65 @@ class AttackBundle(aa.AdversarialAttack):
         loss_object = plf.VanillaXentropy(self.classifier_net, self.normalizer)
         return loss_object(perturbation, labels, output_per_example=True)
 
-    def _default_norm_for_min_perturbation(self, perturbation):
-        """ Is a norm for the perturbation and outputs batchwise norm vals
+    def _default_norm_for_min_perturbation(self, perturbation, labels):
+        """ Is a norm for the perturbation and outputs batchwise norm vals.
+            This differs from the perturbation's default norm in that it sets
+            NONSUCCESSFUL examples (in terms of misclassification wrt labels)
+            to have norm infty
         ARGS:
             perturbation : ap.AdversarialPerturbation instance - needs an
                            adversarial_tensors() method, which should return an
                            NxCxHxW dimension tensor
+            labels : tensor (N) - labels for the given examples
         RETURNS:
             tensor of shape (N) with perturbation norm per example
         """
-        return perturbation.perturbation_norm(perturbation)
+
+        success_out = perturbation.collect_successful(self.classifier_net,
+                                                      self.normalizer,
+                                                      success_def='misclassify',
+                                                      labels=labels)
+        success_idxs = success_out['success_idxs']
+        full_set = set(range(perturbation.num_examples))
+        success_set = set([int(round(_)) for _ in success_idxs.cpu().numpy()])
+        fail_set = full_set - success_set
+        fail_longtensor = torch.LongTensor(sorted(fail_set))
+        if perturbation.originals.is_cuda:
+            fail_longtensor.cuda()
+
+        default_norm = perturbation.perturbation_norm()
+        if len(fail_longtensor) > 0:
+            default_norm.index_fill_(0, fail_longtensor, MAX_VAL)
+        return default_norm
+
+
+
+
+    @classmethod
+    def _backtrack_indices(cls, index_list):
+        """ Subroutine to backtrack indices:
+            given a list of lists where each list contains indices into the set
+            minus the previous indices:
+            e.g. inputting [[1, 2, 3], [0, 1], [0]] should output
+                 [[1, 2, 3], [0, 4], [5]]
+        ARGS:
+            index_list: int[][] - list of lists of ints where each component
+        RETURNS:
+            int[][] that corresponds to global indices
+        """
+        total_sum = sum(len(_) for _ in index_list)
+        bucket = list(range(total_sum))
+
+        output_lists = []
+
+        for single_list in index_list:
+            count = 0
+            new_list = []
+            for el in single_list:
+                new_list.append(bucket.pop(el - count))
+                count += 1
+            output_lists.append(new_list)
+        return output_lists
 
 
     def attack_lazy(self, examples, labels, verbose=False):
@@ -134,9 +181,8 @@ class AttackBundle(aa.AdversarialAttack):
         ######################################################################
 
         remaining_examples, remaining_labels = examples, labels
-        success_list = []
+        success_list = [] # stores local indices perturbation SUCCEEDS on
         perturbations = []
-        total_success = 0
         for k in order:
             if verbose:
                 print("Running attack %s on %s examples" % \
@@ -148,39 +194,82 @@ class AttackBundle(aa.AdversarialAttack):
             perturbations.append(perturbation)
 
             # Figure out which examples still need attacking
-            success_idxs = perturbation.collect_adversarially_successful(
-                                                           self.classifier_net,
-                                                           self.normalizer,
-                                                           remaining_labels)
-            success_idxs = success_idxs['idxs']
-
+            success_out = perturbation.collect_successful(self.classifier_net,
+                                                          self.normalizer,
+                                                      success_def='misclassify',
+                                                      topk=(1,),
+                                                      labels=remaining_labels)
+            success_idxs = success_out['success_idxs']
             success_list.append(success_idxs)
-            success_set = set(success_idxs.cpu().numpy())
-            total_success += len(success_set)
-            if total_success == num_examples:
-                break
 
-            num_remaining = remaining_examples.shape[0]
-            fail_idxs = torch.LongTensor([_ for _ in range(num_remaining)
-                                          if _ not in success_set])
+            fail_idxs = list(range(remaining_examples.shape[0]))
+
+            for i, success_idx in enumerate(success_idxs):
+                _ = fail_idxs.pop(success_idx - i)
+            fail_idxs = torch.LongTensor(fail_idxs)
             if examples.is_cuda:
                 fail_idxs = fail_idxs.cuda()
 
-            # Build the attack batch for the next attack
+            # If we've succeeded on all examples, stop early
+            if fail_idxs.numel() == 0:
+                break
 
+            # Build the attack batch for the next attack
             remaining_examples = remaining_examples.index_select(0, fail_idxs)
             remaining_labels = remaining_labels.index_select(0, fail_idxs)
 
         # If not all successful, have a 'null perturbation' for the remainder
-        if remaining_examples.numel() > 0:
+        if fail_idxs.numel() > 0:
             fail_perturbation = self.threat_model(remaining_examples)
             fail_perturbation.attach_originals(remaining_examples)
             perturbations.append(fail_perturbation)
-            success_list.append(range(len(fail_idxs)))
+            success_list.append(list(range(len(fail_idxs))))
+
         ######################################################################
         #   Now merge completely successful attacks                          #
         ######################################################################
-        # Compute the expand masks
+
+        # Compute the lists of which GLOBAL indices each attack was successful
+        global_success_idxs = self._backtrack_indices(success_list)
+        global_try_idxs = []
+        running_indices = []
+        for glob_succ_idxs in  global_success_idxs[::-1]:
+            running_indices.extend(glob_succ_idxs)
+            running_indices.sort()
+            try_idx = torch.LongTensor(running_indices[:])
+            if examples.is_cuda:
+                try_idx = try_idx.cuda()
+            global_try_idxs.append(try_idx)
+        global_try_idxs = global_try_idxs[::-1]
+
+
+        # Expand each perturbation into GLOBAL size (can skip first one tho!)
+        scattered_perturbations = [] # first tries ALL
+        for i, (pert, mask) in enumerate(zip(perturbations, global_try_idxs)):
+            if i == 0:
+                scattered_perturbations.append(pert)
+                continue
+
+            int_mask = [int(round(_)) for _ in mask.cpu().numpy()]
+            scatter_pert = pert.scatter_perturbation(num_examples, int_mask)
+            scattered_perturbations.append(scatter_pert)
+
+        # Merge perturbations together using success idxs
+
+        running_perturbation = scattered_perturbations[0]
+        for i, scatter_pert in enumerate(scattered_perturbations[1:], start=1):
+            mask = torch.LongTensor(num_examples).fill_(0)
+            mask.index_fill_(0, torch.LongTensor(global_success_idxs[i - 1]), 1)
+            if examples.is_cuda:
+                mask = mask.cuda()
+            running_perturbation = running_perturbation.merge_perturbation(
+                                                             scatter_pert, mask)
+
+        # Attach the originals to initialize the final perturbation
+        running_perturbation.attach_originals(examples)
+        return running_perturbation
+
+        '''
         unseen_idxs = set(range(num_examples))
         expand_masks = []
         for idxs in success_list:
@@ -222,9 +311,9 @@ class AttackBundle(aa.AdversarialAttack):
 
         running_perturbation.attach_originals(examples)
         return running_perturbation
+        '''
 
-
-    def attack_nonlazy(self, examples, labels):
+    def attack_nonlazy(self, examples, labels, verbose=False):
         """ Nonlazy version of attack method: for when we want to compute
             adversarial examples for each attack in the bundle. We'll then
             merge the perturbations to take the 'best' (according to the goal)
@@ -234,6 +323,7 @@ class AttackBundle(aa.AdversarialAttack):
                       vals are between 0.0 and 1.0 )
             labels: single-dimension tensor with labels of examples (in same
                     order)
+            verbose: boolean - if True we print some stuff out
         RETURNS: a single perturbation object
         """
 
@@ -245,17 +335,13 @@ class AttackBundle(aa.AdversarialAttack):
         name_to_order = {}
         order_to_name = {}
         param_fxn = self.goal_params
-
+        batchwise_fxn = lambda ex: param_fxn(ex, labels)
         # make batchwise fxn take in adversarial tensors as only arg
         if self.goal == 'max_loss':
-            # loss better have labels as second arg and nothing else
-            batchwise_fxn = lambda ex: param_fxn(ex, labels)
             comparator = torch.max
         elif self.goal == 'min_perturbation':
             comparator = torch.min
-            batchwise_fxn = param_fxn
-        else: # elif self.goal == 'min_successful_perturbation':
-            # this is more complicated b/c we need to ensure success.
+        else: # other goals (whatever they may be)
             # Left as TODO
             raise NotImplementedError("TODO")
 
