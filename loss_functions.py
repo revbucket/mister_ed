@@ -374,7 +374,8 @@ class SSIMRegularization(ReferenceRegularizer):
     def forward(self, examples, *args, **kwargs):
         output = []
         for ex, fix_ex in zip(examples, self.fix_im):
-            output.append(1.0 - self.ssim_instance(ex, fix_ex))
+            output.append(1.0 - self.ssim_instance(ex.unsqueeze(0),
+                                                   fix_ex.unsqueeze(0)))
         return torch.stack(output)
 
 
