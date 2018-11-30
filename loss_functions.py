@@ -2,6 +2,7 @@ import custom_lpips.custom_dist_model as dm
 import torch.nn as nn
 import torch
 from numbers import Number
+import utils.pytorch_ssim as ssim
 import utils.pytorch_utils as utils
 import utils.image_utils as img_utils
 import spatial_transformers as st
@@ -349,6 +350,32 @@ class LpipsRegularization(ReferenceRegularizer):
 
         return perceptual_loss.squeeze()
 
+#############################################################################
+#                         SSIM PERCEPTUAL REGULARIZATION                    #
+#############################################################################
+
+class SSIMRegularization(ReferenceRegularizer):
+
+    def __init__(self, fix_im, **kwargs):
+        super(SSIMRegularization, self).__init__(fix_im)
+
+        if 'window_size' in kwargs:
+            self.ssim_instance = ssim.SSIM(window_size=kwargs['window_size'])
+        else:
+            self.ssim_instance = ssim.SSIM()
+
+        manual_gpu = kwargs.get('manual_gpu', None)
+        if manual_gpu is not None:
+            self.use_gpu = manual_gpu
+        else:
+            self.use_gpu = utils.use_gpu()
+
+
+    def forward(self, examples, *args, **kwargs):
+        output = []
+        for ex, fix_ex in zip(examples, self.fix_im):
+            output.append(self.ssim_instance(ex, fix_ex))
+        return torch.stack(output)
 
 
 ##############################################################################
