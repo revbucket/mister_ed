@@ -1,15 +1,16 @@
 """ Utilities for general pytorch helpfulness """
 from __future__ import print_function
-import torch
-import numpy as np
-import torchvision.transforms as transforms
-import torch.cuda as cuda
+
 import gc
-import random
 import os
-import warnings
-from torch.autograd import Variable, Function
 import subprocess
+import warnings
+
+import numpy as np
+import torch
+import torch.cuda as cuda
+import torchvision.transforms as transforms
+from torch.autograd import Variable, Function
 
 
 ###############################################################################
@@ -88,10 +89,11 @@ def safe_tensor(entity):
     elif isinstance(entity, torch.tensor._TensorBase):
         return entity
     elif isinstance(entity, np.ndarray):
-        return torch.Tensor(entity) # UNSAFE CUDA CASTING
+        return torch.Tensor(entity)  # UNSAFE CUDA CASTING
     else:
         raise Exception("Can't cast %s to a Variable" %
                         entity.__class__.__name__)
+
 
 ##############################################################################
 #                                                                            #
@@ -102,6 +104,7 @@ def safe_tensor(entity):
 
 class AverageMeter(object):
     """Computes and stores the average and current value"""
+
     def __init__(self):
         self.reset()
 
@@ -157,7 +160,7 @@ def torch_argmin(tensor):
 
 def clamp_ref(x, y, l_inf):
     """ Clamps each element of x to be within l_inf of each element of y """
-    return torch.clamp(x - y , -l_inf, l_inf) + y
+    return torch.clamp(x - y, -l_inf, l_inf) + y
 
 
 def torch_arctanh(x, eps=1e-6):
@@ -191,11 +194,10 @@ def checkpoint_incremental_array(output_file, numpy_list,
         return [concat]
 
 
-
 def sizeof_fmt(num, suffix='B'):
     """ https://stackoverflow.com/a/1094933
         answer by Sridhar Ratnakumar """
-    for unit in ['','Ki','Mi','Gi','Ti','Pi','Ei','Zi']:
+    for unit in ['', 'Ki', 'Mi', 'Gi', 'Ti', 'Pi', 'Ei', 'Zi']:
         if abs(num) < 1024.0:
             return "%3.1f%s%s" % (num, unit, suffix)
         num /= 1024.0
@@ -206,12 +208,12 @@ def clip_0_1(tensorlike):
     # Clips tensorlike object into [0., 1.0] range
     return torch.clamp(tensorlike, 0.0, 1.0)
 
+
 def clamp_0_1_delta(x, y):
     """ Returns the delta that'd have to be added to (x + y) such that
         (x + y) + delta is in the range [0.0, 1.0]
     """
     return torch.clamp(x + y, 0.0, 1.0) - (x + y)
-
 
 
 def random_linf_pertubation(examples_like, l_inf):
@@ -322,23 +324,19 @@ def random_from_lp_ball(tensorlike, lp, lp_bound, dim=0):
     """
     assert isinstance(lp, int) or lp == 'inf'
 
-
-
     rand_direction = torch.rand(tensorlike.shape).type(tensorlike.type())
 
     if lp == 'inf':
         return rand_direction * (2 * lp_bound) - lp_bound
     else:
-        rand_direction = rand_direction - 0.5 # allow for sign swapping
+        rand_direction = rand_direction - 0.5  # allow for sign swapping
         # first magnify such that each element is above the ball
         min_norm = torch.min(batchwise_norm(rand_direction.abs(), lp, dim=dim))
         rand_direction = rand_direction / (min_norm + 1e-6)
         rand_magnitudes = torch.rand(tensorlike.shape[dim]).type(
-                                                            tensorlike.type())
+            tensorlike.type())
         rand_magnitudes = rand_magnitudes.unsqueeze(1)
         rand_magnitudes = rand_magnitudes.expand(*rand_direction.shape)
-
-
 
         return torch.renorm(rand_direction, lp, dim, lp_bound) * rand_magnitudes
 
@@ -387,7 +385,6 @@ def fold_mask(x, y, mask):
     if is_var:
         assert isinstance(mask, Variable)
 
-
     per_example_shape = x.shape[1:]
     make_broadcastable = lambda m: m.view(-1, *tuple([1] * (x.dim() - 1)))
 
@@ -431,7 +428,7 @@ def rough_gpu_estimate():
         otherwise just returns the total number of elements
     """
     cuda_count = {}
-    listprod = lambda l: reduce(lambda x,y: x * y, l)
+    listprod = lambda l: reduce(lambda x, y: x * y, l)
     for el in gc.get_objects():
         if isinstance(el, (torch.tensor._TensorBase, Variable)) and el.is_cuda:
             device = el.get_device()
@@ -444,7 +441,6 @@ def rough_gpu_estimate():
         return sizeof_fmt(cuda_count.values()[0])
     else:
         return {k: sizeof_fmt(v) for k, v in cuda_count.items()}
-
 
 
 ##############################################################################
@@ -480,7 +476,6 @@ def accuracy(output, target, topk=(1,)):
     return res
 
 
-
 ###############################################################################
 #                                                                             #
 #                                   NORMALIZERS                               #
@@ -498,6 +493,7 @@ class IdentityNormalize(Function):
     def differentiable_call(self):
         pass
 
+
 class DifferentiableNormalize(Function):
 
     def __init__(self, mean, std):
@@ -507,13 +503,11 @@ class DifferentiableNormalize(Function):
         self.differentiable = True
         self.nondiff_normer = transforms.Normalize(mean, std)
 
-
     def __call__(self, var):
         if self.differentiable:
             return self.forward(var)
         else:
             return self.nondiff_normer(var)
-
 
     def _setter(self, c, mean, std):
         """ Modifies params going forward """
@@ -528,16 +522,13 @@ class DifferentiableNormalize(Function):
         if mean is not None or std is not None:
             self.nondiff_normer = transforms.Normalize(self.mean, self.std)
 
-
     def differentiable_call(self):
         """ Sets the __call__ method to be the differentiable version """
         self.differentiable = True
 
-
     def nondifferentiable_call(self):
         """ Sets the __call__ method to be the torchvision.transforms version"""
         self.differentiable = False
-
 
     def forward(self, var, mean=None, std=None):
         """ Normalizes var by subtracting the mean of each channel and then
@@ -556,9 +547,6 @@ class DifferentiableNormalize(Function):
         mean_var = Variable(var.data.new(self.mean).view(1, c, 1, 1))
         std_var = Variable(var.data.new(self.std).view(1, c, 1, 1))
         return (var - mean_var) / std_var
-
-
-
 
 
 ##############################################################################
@@ -582,7 +570,6 @@ class TrainingLogger(object):
         """ Returns the number of data points in this logger instance """
         return sum(len(_) for _ in self.series.values())
 
-
     def add_series(self, name):
         """ Adds the name of a 'data series' where each data series is a list
             of data-entries, where each data-entry is of the form
@@ -590,7 +577,6 @@ class TrainingLogger(object):
         """
         if name not in self.series:
             self.series[name] = []
-
 
     def sort_series(self, name, return_keys=False):
         """ Simply returns the series of specified name sorted by epoch and then
@@ -617,7 +603,6 @@ class TrainingLogger(object):
         """ simple getter method for the given named data series """
         return self.series[name]
 
-
     def log_datapoint(self, name, data_tuple):
         """ Logs the full data point
         ARGS:
@@ -639,4 +624,21 @@ class TrainingLogger(object):
         self.log_datapoint(name, ((epoch, minibatch), value))
 
 
+##############################################################################
+#                                                                            #
+#                       Neural Fingerprinting                                #
+#                                                                            #
+##############################################################################
 
+def np2var(x, cuda):
+    if cuda:
+        return Variable(torch.from_numpy(x).type(torch.cuda.FloatTensor))
+    else:
+        return Variable(torch.from_numpy(x).type(torch.FloatTensor))
+
+
+def var2np(x, cuda):
+    t = x.data
+    if cuda:
+        t = t.cpu()
+    return t.numpy()

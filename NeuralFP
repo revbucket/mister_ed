@@ -1,4 +1,4 @@
-""" Reproduce the result of ICLR 2018 Paper
+""" Reimplementation of ICLR 2019 Submission
     Detecting Adversarial Examples via Neural Fingerprinting
     https://arxiv.org/abs/1803.03870
 
@@ -6,78 +6,105 @@
     see https://github.com/StephanZheng/neural-fingerprinting
 """
 
+from __future__ import print_function
+
+import os
+import pickle
+
+import numpy as np
+import torch
+import torch.cuda as cuda
+import torch.nn as nn
+import torch.nn.functional as F
+import torch.optim as optim
+from torch.autograd import Variable
+from cifar10 import cifar_loader as cl
+from loss_functions import NFLoss
+
+import utils.checkpoints as checkpoints
+import utils.pytorch_utils as utils
+import time
+
+
 class NeuralFP(object):
     """ Main class to do the training and detection """
-    def __init__(self, classifier_net, normalizer,
-                 num_x, num_y, dataset_name,
-                 manual_gpu=None):
-        """ Stores params for how to train using fingerprints
+
+    def __init__(self, classifier_net, num_dx,
+                 num_class, dataset_name, log_dir,
+                 eps=0.1, manual_gpu=None):
+        """ Stores params training using fingerprints
         ARGS:
-            classifier_net: model used for training and testing
-            num_x: N number of delta x fingerprints
-            num_y: NxK number of delta y fingerprints. One delta x fingerprint
-                   corresponds to K delta y fingerprints where k is the number of classes
+            classifier_net: Model used for training and evaluation
+            num_dx: N number of delta x fingerprints
+            num_class: Number of class for the dataset
+            dataset_name: "cifar" or "mnist", use it to determine specific fingerprints and loss
+            log_dir: Place to store generated fingerprints
+            eps: Size of perturbation. default: 0.1
+            manual_gpu: Use gpu or not. If not specified, will use gpu if available.
         FingerPrint:
             fp_target: num_classes x num_perturb x num_class Tensor: Every element
                        of the first axis has the same value
             fp_dx: num_dx * 1 * Channel * Width * Height numpy array: Contains
                    fingerprints for different perturbed directions
+
         """
-        self.data_loader = data_loader
         self.classifier_net = classifier_net
         self.logger = utils.TrainingLogger()
+        self.dataset_name = dataset_name
 
         if manual_gpu is not None:
             self.use_gpu = manual_gpu
         else:
             self.use_gpu = utils.use_gpu()
 
-        self.num_x = num_x
-        self.num_y = num_y
+        self.num_dx = num_dx
+        self.num_class = num_class
 
         # build fingerprints
-        if(self.dataset_name == "mnist"):
-            fp_dx = [np.random.rand(1,1,28,28)*args.eps for i in range(args.num_dx)]
+        if self.dataset_name == "mnist":
+            fp_dx = [np.random.rand(1, 1, 28, 28) * eps for _ in range(num_dx)]
 
-            fp_target = -0.2357*np.ones((args.num_class, args.num_dx, args.num_class))
-            for j in range(args.num_dx):
-                for i in range(args.num_class):
-                    fp_target[i,j,i] = 0.7
+            fp_target = -0.2357 * np.ones((num_class, num_dx, num_class))
+            for j in range(num_dx):
+                for i in range(num_class):
+                    fp_target[i, j, i] = 0.7
 
             # save the fingerprints
-            pickle.dump(fp_dx, open(os.path.join(args.log_dir, "fp_inputs_dx.pkl"), "wb"))
-            pickle.dump(fp_target, open(os.path.join(args.log_dir, "fp_outputs.pkl"), "wb"))
+            """ TODO: Clean args.log_dir"""
+            pickle.dump(fp_dx, open(os.path.join(log_dir, "fp_inputs_dx.pkl"), "wb"))
+            pickle.dump(fp_target, open(os.path.join(log_dir, "fp_outputs.pkl"), "wb"))
 
-            self.fp_target = np2var(fp_target, args.use_gpu)
+            self.fp_target = utils.np2var(fp_target, self.use_gpu)
 
-        else:
-            fp_dx = ([(np.random.rand(1,3,32,32)-0.5)*2*args.eps for i in range(args.num_dx)])
+        else:  # CIFAR 10
+            fp_dx = ([(np.random.rand(1, 3, 32, 32) - 0.5) * 2 * eps for _ in range(num_dx)])
 
             # num_target_classes x num_perturb x num_class
-            fp_target = -0.254*np.ones((args.num_class, args.num_dx, args.num_class))
+            fp_target = -0.254 * np.ones((num_class, num_dx, num_class))
 
-            for j in range(args.num_dx):
-                for i in range(args.num_class):
-                    fp_target[i,j,i] = 0.6
-            fp_target = 1.5*fp_target
+            for j in range(num_dx):
+                for i in range(num_class):
+                    fp_target[i, j, i] = 0.6
+            fp_target = 1.5 * fp_target
 
             # save the fingerprints
-            pickle.dump(fp_dx, open(os.path.join(args.log_dir, "fp_inputs_dx.pkl"), "wb"))
-            pickle.dump(fp_target, open(os.path.join(args.log_dir, "fp_outputs.pkl"), "wb"))
+            # pickle.dump(fp_dx, open(os.path.join(log_dir, "fp_inputs_dx.pkl"), "wb"))
+            # pickle.dump(fp_target, open(os.path.join(log_dir, "fp_outputs.pkl"), "wb"))
 
-            fp_target = np2var(fp_target, args.use_gpu)
+            fp_target = utils.np2var(fp_target, self.use_gpu)
 
-        self.fp_dx = fp_dx # numpy array
-        self.fp_dys = fp_target # torch variable
+        self.fp_dx = fp_dx  # numpy array
+        self.fp_target = fp_target  # torch variable
 
-    def train(self, data_loader, normalizer, num_epochs, train_loss,
-              optimizer=None, regularize_adv_criterion=None,
-              regularize_adv_scale=None, logger=None):
+    def train(self, train_loader, test_loader, normalizer, num_epochs,
+              train_loss, verbosity_epoch=1, optimizer=None, logger=None,
+              regularize_adv_criterion=None, regularize_adv_scale=None):
         """ Build some Neural fingerprints given the perturbed directions. Train
             the network with new regularization to minimize the distance between
             model output and fingerprint delta y
             ARGS:
-                data_loader: torch DataLoader can be Cifar10 or MNIST
+                train_loader: torch DataLoader can be Cifar10 or MNIST
+                test_loader: data loader for validation
                 normalizer: user defined normalizer
                 num_epochs: number of training epochs
                 train_loss: loss function for vanilla classification training
@@ -86,20 +113,19 @@ class NeuralFP(object):
                 regularize_adv_scale: scale between vanilla training and regularization
                 logger : if not None, is a utils.TrainingLogger instance. Otherwise
                          we use this instance's self.logger object to log
-        """
+                verbosity_epoch: TBD
 
+        """
 
         ######################################################################
         #   Setup/ input validations                                         #
         ######################################################################
-        self.classifier_net.train() # in training mode
+        self.classifier_net.train()  # in training mode
         assert isinstance(num_epochs, int)
 
         assert not (self.use_gpu and not cuda.is_available())
         if self.use_gpu:
             self.classifier_net.cuda()
-
-        fingerprint_accuracy = [] # array to store the accuracy
 
         # restore fingerprints
         fp_dx = self.fp_dx
@@ -113,174 +139,194 @@ class NeuralFP(object):
         logger.add_series('training_loss')
 
         # setup loss fxn, optimizer
-        optimizer = optimizer or optim.Adam(self.classifier_net.parameters(),
-                                            lr=0.001)
+
+        optimizer = optimizer or optim.SGD(self.classifier_net.parameters(),
+                                           lr=0.01, weight_decay=1e-6, momentum=0.5)
 
         # setup regularize adv object
-        regularize_adv_criterion = regularize_adv_criterion or n.MSELoss()
+        regularize_adv_criterion = regularize_adv_criterion or nn.MSELoss()
 
         ######################################################################
         #   Training loop                                                    #
         ######################################################################
-
+        start = time.time()
         for epoch in range(num_epochs + 1):
-            running_loss_print, running_loss_print_mb = 0.0, 0
-            running_loss_log, running_loss_log_mb = 0.0, 0
-            for idx, data in enumerate(data_loader, 0):
-                inputs, labels = data
+            for idx, train_data in enumerate(train_loader, 0):
+                inputs, labels = train_data
                 if self.use_gpu:
                     inputs = inputs.cuda()
                     labels = labels.cuda()
 
+                real_bs = labels.size(0)  # real batch size
+                num_class = self.num_class
+                # Build Perturbed Images
 
-                real_bs = labels.size(0) # real batch size
-                num_class = labels.size(1)
-                # Build Pertubed Images
-
-                # num_dx * num_class
+                # Batch * num_dx * num_class
                 fp_target_var = torch.index_select(fp_target, 0, labels)
 
                 # inputs_net contains inputs and perturbed images
                 inputs_net = inputs
-                for i in range(args.num_dx):
+                for i in range(self.num_dx):
                     dx = fp_dx[i]
-                    dx = np2var(dx,args.cuda)  # now dx becomes torch var
-                    inputs_net = torch.cat((x_net,x+dx))  # append to the end. x_net now contains x and dx of all directions
+                    dx = utils.np2var(dx, self.use_gpu)  # now dx becomes torch var
+                    inputs_net = torch.cat(
+                        (inputs_net,
+                         inputs_net + dx))  # append to the end. x_net now contains x and dx of all directions
 
                 # Now proceed with standard training
-                self.normalizer.differentiable_call()
+                normalizer.differentiable_call()
                 self.classifier_net.train()
                 inputs, labels = Variable(inputs), Variable(labels)
                 optimizer.zero_grad()
 
                 # forward step
-                logits_net = self.classifier_net.forward(self.normalizer(inputs_net))
-                output_net = F.log_softmax(logits_net, dim = 1)  # softmax of the class axis
+                logits_net = self.classifier_net.forward(normalizer(inputs_net))
+                output_net = F.log_softmax(logits_net, dim=1)  # softmax of the class axis
 
                 outputs = output_net[0:real_bs]
                 logits = logits_net[0:real_bs]
                 logits_norm = logits * torch.norm(logits, 2, 1, keepdim=True).reciprocal().expand(real_bs, num_class)
                 loss = train_loss.forward(outputs, labels)  # vanilla classification loss
 
+                reg_adv_loss = 0
                 # compute fingerprint loss
-                for i in range(self.num_x):
-                    dx = fp_dx[i]
-                    fp_target_var_i = fp_target_var[:,i,:]
-                    logits_p = logits_net[(i+1)*real_bs:(i+2)*real_bs] # logits of x+dx in one direction
-                    logits_p_norm = logits_p * torch.norm(logits_p, 2, 1, keepdim=True).reciprocal().expand(real_bs, args.num_class)
+                for i in range(self.num_dx):
+                    fp_target_var_i = fp_target_var[:, i, :]
+                    logits_p = logits_net[(i + 1) * real_bs:(i + 2) * real_bs]  # logits of x+dx in one direction
+                    logits_p_norm = logits_p * torch.norm(logits_p, 2, 1, keepdim=True).reciprocal().expand(real_bs,
+                                                                                                            num_class)
+
                     diff_logits_p = logits_p_norm - logits_norm + 0.00001
-                    reg_adv_loss += regularize_adv_critertion(diff_logits_p ,fp_target_var_i)
+                    reg_adv_loss += regularize_adv_criterion(diff_logits_p, fp_target_var_i)
 
-                # print("reg_adv_loss:", reg_adv_loss)
+                # Print Loss
+                if idx % 100 == 0:
+                    print("Time is ", time.time() - start)
+                    start = time.time()
+                    print("reg_adv_loss:", float(reg_adv_loss))
+                    print("vanilla loss:", float(loss.data))
 
-                # set hyperparmeter
+                # set relative importance between vanilla and FP loss
                 if regularize_adv_scale is not None:
-                    loss = loss + regularize_adv_scale*loss_fingerprint_dy
-                elif(self.dataset_name == "cifar"):
-                    loss = loss + (1.0+50.0/args.num_dx)*loss_fingerprint_dy
+                    loss = loss + regularize_adv_scale * reg_adv_loss
+                elif self.dataset_name == "cifar":
+                    loss = loss + (1.0 + 50.0 / self.num_dx) * reg_adv_loss
                 else:
-                    loss = loss + 1.0*loss_fingerprint_dy
+                    loss = loss + 1.0 * reg_adv_loss
 
-                #backward step
+                # backward step
                 loss.backward()
                 optimizer.step()
 
-                # print things
+                # test accuracy
+                if idx % 100 == 0:
+                    self.classifier_net.eval()
 
-                running_loss_print += float(loss.data)
-                running_loss_print_mb +=1
-                if (verbosity_level >= 1 and
-                    i % verbosity_minibatch == verbosity_minibatch - 1):
-                    print('[%d, %5d] loss: %.6f' %
-                          (epoch, i + 1, running_loss_print /
-                                 float(running_loss_print_mb)))
-                    running_loss_print = 0.0
-                    running_loss_print_mb = 0
+                    with torch.no_grad():
+                        correct = 0
+                        total = 0
+                        for test_data in test_loader:
+                            val_images, val_labels = test_data
+                            if self.use_gpu:
+                                val_images = val_images.cuda()
+                                val_labels = val_labels.cuda()
 
-                # log things
-                running_loss_log += float(loss.data)
-                running_loss_log_mb += 1
-                if (loglevel_level >= 1 and
-                    i % loglevel_minibatch == loglevel_minibatch - 1):
-                    logger.log('training_loss', epoch, i + 1,
-                               running_loss_log / float(running_loss_log_mb))
-                    running_loss_log = 0.0
-                    running_loss_log_mb = 0
+                            outputs = self.classifier_net(val_images)
+                            _, predicted = torch.max(outputs.data, 1)
+                            total += val_labels.size(0)
+                            correct += (predicted == val_labels).sum().item()
+                    print("The Accuracy is ", 100 * correct / total, "%")
 
             # end_of_epoch
             if epoch % verbosity_epoch == 0:
-                print("COMPLETED EPOCH %04d... checkpointing here" % epoch)
-                checkpoints.save_state_dict(self.experiment_name,
-                                            self.architecture_name,
+                print("Finish Epoch:", epoch, "Vanilla loss:", float(loss))
+                checkpoints.save_state_dict("NFPTraining",
+                                            "ResNet50",
                                             epoch, self.classifier_net,
                                             k_highest=3)
 
-
-        if verbosity_level >= 1:
-            print('Finished Training')
+        print('Finished Training')
 
         return logger
 
+    def eval(self, val_loader, normalizer, tau, logger=None):
+        """
+            Evaluation of neural fingerprint's detection accuracy
+                ARGS:
+                data_loader: Pytorch DataLoader for MNIST and CIFAR10. The shuffle
+                             flag need to be turned off
+                normalizer:  Deterministic normalizer for validation
+        """
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    """
-    def test(self, use_gpu, data_loader, test_length=None):
         ######################################################################
         #   Setup/ input validations                                         #
         ######################################################################
-        self.classifier_net.eval() # in evaluation mode
-
+        self.classifier_net.eval()
         assert not (self.use_gpu and not cuda.is_available())
         if self.use_gpu:
             self.classifier_net.cuda()
 
-        # restore fingerprint
-        fp_dx, fp_target = self.fp_dx, self.fp_target
+        # Initialize NFLoss Object
+        loss = NFLoss(self.classifier_net, self.num_dx.self.num_class, self.fp_dx, self.fp_target, normalizer)
 
-        for idx, data in enumerate(data_loader):
-            inputs, target = data
+        for idx, val_data in enumerate(val_loader, 0):
+            inputs, labels = val_data
             if self.use_gpu:
-                data, target = data.cuda(), target.cuda()
+                inputs = inputs.cuda()
+                labels = labels.cuda()
 
-            # do I need to use no_grad here?
-            data, target = Variable(data), Variable(target)
-            real_bs = target.size(0)
+            real_bs = labels.size(0)  # real batch size
 
-            logits = self.classifier_net(data)
-            output = F.log_softmax(logits)
-            logits_norm = logits * torch.norm(logits, 2, 1, keepdim=True).reciprocal().expand(real_bs, args.num_class)
+            loss.setup_attack_batch(inputs)
 
-            fp_target_var = torch.index_select(fp_target, 0, target)
+            # xlabel contains all labels for the dataset which need to be provided
+            xlabel = []
 
-            loss_n = torch.nn.MSELoss()
-            for i in range(args.num_dx):
-                dx = fp_dx[i]
-                fp_target_var_i = fp_target_var[:,i,:]
+            # indicate which examples are adversarial.
+            adv_mask = torch.zeros(real_bs)
 
-                logits_p = self.classfier_net(data + np2var(dx, args.cuda))
-                output_p = F.log_softmax(logits_p)
-                logits_p_norm = logits_p * torch.norm(logits_p, 2, 1, keepdim=True).reciprocal().expand(real_bs, args.num_class)
+            # Check all class
+            for label in xlabel:
+                loss.forward(label)
 
-                logits_p_class = logits_p_norm.data.max(0, keepdim=True)[1]
+                # check distance
+                for i in range(real_bs):
+                    loss_per_example = loss[i]  # can I access it in that way?
+                    if loss_per_example <= tau:
+                        adv_mask[i] = 1
 
-                diff = logits_p_norm - logits_norm
-                diff_class = diff.data.max(1, keepdim=True)[1]
+        batch_accuracy = torch.sum(adv_mask) / real_bs
+        print("The Accuracy is ", batch_accuracy*100, "%")
 
-                fp_target_class = fp_target_var_i.data.max(1, keepdim=True)[1]
-                loss_y += loss_n(logits_p_norm, fp_target_var_i)
-                loss_dy += 10.0*loss_n(diff, fp_target_var_i)
-                num_same_argmax += torch.sum(diff_class == fp_target_class)
-    """
+
+def main(batch_size=48):
+    # set random seed for reproducibility
+    torch.manual_seed(1)
+    torch.cuda.manual_seed(1)  # ignore this if using CPU
+
+    # Match the normalizer using in the official implementation
+    normalizer = utils.DifferentiableNormalize(mean=[0.5, 0.5, 0.5],
+                                               std=[1.0, 1.0, 1.0])
+
+    # use resnet32
+    classifier_net = cl.load_pretrained_cifar_resnet(flavor=32,
+                                                     return_normalizer=False,
+                                                     manual_gpu=None)
+    # load cifar data
+    cifar_train = cl.load_cifar_data('train', batch_size=batch_size)
+    cifar_test = cl.load_cifar_data('train', batch_size=256)
+
+    nfp = NeuralFP(classifier_net=classifier_net, num_dx=5, num_class=10, dataset_name="cifar",
+                   log_dir="~/Documents/deep_learning/AE/submit/mister_ed/pretrained_model")
+
+    num_epochs = 30
+    verbosity_epoch = 5
+
+    train_loss = nn.CrossEntropyLoss()
+
+    logger = nfp.train(cifar_train, cifar_test, normalizer, num_epochs, train_loss,
+                       verbosity_epoch)
+
+
+if __name__ == '__main__':
+    main()
