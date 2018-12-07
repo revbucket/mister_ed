@@ -256,6 +256,7 @@ class NeuralFP(object):
                 data_loader: Pytorch DataLoader for MNIST and CIFAR10. The shuffle
                              flag need to be turned off
                 normalizer:  Deterministic normalizer for validation
+                tau:
         """
 
         ######################################################################
@@ -295,6 +296,7 @@ class NeuralFP(object):
                     if loss_per_example <= tau:
                         adv_mask[i] = 1
 
+            loss.cleanup_attack_batch()
         batch_accuracy = torch.sum(adv_mask) / real_bs
         print("The Accuracy is ", batch_accuracy*100, "%")
 

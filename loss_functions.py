@@ -544,7 +544,15 @@ class NFLoss(ReferenceRegularizer):
         else:
             self.use_gpu = utils.use_gpu()
 
-    def forward(self, labels, *args, **kwargs):
+    def setup_attack_batch(self, fix_im):
+        """ zero grads """
+        self.zero_grad()
+
+    def cleanup_attack_batch(self):
+        """ Cleanup function to zeros grads"""
+        self.zero_grad()
+
+    def forward(self, examples, labels, *args, **kwargs):
         """Return Neural Fingerprinting Regularized Loss
         Currently only support one example per mini-batch
         ARGS:
@@ -560,7 +568,6 @@ class NFLoss(ReferenceRegularizer):
         """
 
         # real batch size
-        examples = self.fix_im
         real_bs = examples.size(0)
 
         # Compute original logits
