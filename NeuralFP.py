@@ -256,7 +256,7 @@ class NeuralFP(object):
                 data_loader: Pytorch DataLoader for MNIST and CIFAR10. The shuffle
                              flag need to be turned off
                 normalizer:  Deterministic normalizer for validation
-                tau:
+                tau: TBD
         """
 
         ######################################################################
@@ -288,11 +288,11 @@ class NeuralFP(object):
 
             # Check all class
             for label in xlabel:
-                loss.forward(label)
+                loss_fp = torch.sqrt(loss.forward(label))  # loss is MSE and we need L2 distance
 
                 # check distance
                 for i in range(real_bs):
-                    loss_per_example = loss[i]  # can I access it in that way?
+                    loss_per_example = loss_fp[i]  # can I access it in that way?
                     if loss_per_example <= tau:
                         adv_mask[i] = 1
 

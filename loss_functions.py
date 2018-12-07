@@ -554,7 +554,6 @@ class NFLoss(ReferenceRegularizer):
 
     def forward(self, examples, labels, *args, **kwargs):
         """Return Neural Fingerprinting Regularized Loss
-        Currently only support one example per mini-batch
         ARGS:
             TODO: What to do with the examples variable. Actually it is not needed but all attacks pass an examples into
                   the function.
@@ -564,7 +563,7 @@ class NFLoss(ReferenceRegularizer):
             labels: Variable (longTensor of length N) - true classification
                     output for fix_im/examples
         RETURNS:
-            scalar loss variable
+            loss value of each example
         """
 
         # real batch size
@@ -610,4 +609,4 @@ class NFLoss(ReferenceRegularizer):
             # Do we need to divide num_batch here? The official implementation doesn't do this
 
         # TODO:Not Squeeze here. reg_adv_loss is Batch * num_class
-        return reg_adv_loss / self.num_dx
+        return reg_adv_loss
