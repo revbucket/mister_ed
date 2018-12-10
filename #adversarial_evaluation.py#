@@ -217,7 +217,7 @@ class EvaluationResult(object):
         count = attack_out[0].shape[0]
         result.update(loss_val_sum, n=count)
 
-    def stash_perturbations(self, eval_label, attack_out):
+    def stash_perturbations(self, eval_label, attack_out):T
         """ This will store the perturbations.
            (TODO: make these tensors and store on CPU)
         """
