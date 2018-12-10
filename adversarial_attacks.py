@@ -720,3 +720,169 @@ class CarliniWagner(AdversarialAttack):
 
 
 
+##############################################################################
+#                                                                            #
+#                           SPSA Adversarial Attack                          #
+#                                                                            #
+##############################################################################
+
+class SPSA(AdversarialAttack):
+    # Simultaneous Perturbation Stochastic Approximation (SPSA) is a
+    # gradient-free optimization technique, used in the context of AE's in
+    # https://arxiv.org/pdf/1802.05666.pdf
+    # (note, we follow the implementation ^ and use the Adam update rule)
+    def __init__(self, classifier_net, normalizer, threat_model, loss_fxn,
+                 manual_gpu=None):
+        super(SPSA, self).__init__(classifier_net, normalizer, threat_model,
+                                   manual_gpu=manual_gpu)
+        self.loss_fxn = loss_fxn
+
+
+    def _gradient_estimate(self, perturbation, examples, labels,
+                           spsa_batch_size, spsa_pert_size):
+        """ Performs the gradient estimate using rademacher RVs for the SPSA
+            attack
+        ARGS:
+            perturbation: AdversarialPerturbation instance
+            examples : Tensor or Variable (NxCxHxW)- the clean examples
+            labels : Tensor or Variable (N) - labels for the clean examples
+            spsa_batch_size: int - how many rademacher instances we try
+            spsa_pert_size : float - 'perturbation size', delta in the paper
+        RETURNS:
+            gradient estimate of the perturbation parameters with respect to the
+            loss
+        """
+        gradient_estimate = None
+
+        for spsa_batch in range(spsa_batch_size):
+            pert_params = list(perturbation.parameters())
+
+            # Craft 1 rademacher RV per parameter entry
+            rademachers = []
+            for param in pert_params:
+                param_rademacher = (torch.rand_like(param) > 0.5).float()
+                param_rademacher = (param_rademacher * 2 - 1.0) * spsa_pert_size
+                rademachers.append(param_rademacher)
+
+            # Modify perturbation to get the (params - rademacher) loss
+            low_clone = perturbation.clone_perturbation()
+            neg_rvs = utils.scale_tensor_list(rademachers, -1.0)
+            low_clone.add_to_params(neg_rvs)
+            low_loss = self.loss_fxn.forward(low_clone(examples), labels,
+                                             perturbation=low_clone)
+
+            # Modify perturbation to get the (params + rademacher loss)
+            high_clone = perturbation.clone_perturbation()
+            high_clone.add_to_params(rademachers)
+            high_loss = self.loss_fxn.forward(high_clone(examples), labels,
+                                              perturbation=high_clone)
+
+            g_i_scale = (high_loss - low_loss) / (2 * spsa_pert_size)
+            loss_diff = utils.scale_tensor_list(rademachers, g_i_scale)
+            # Sum up all of them and then divide by batch size at the end
+            if gradient_estimate is None:
+                gradient_estimate = loss_diff
+            else:
+                gradient_estimate = utils.add_tensor_list(gradient_estimate,
+                                                          loss_diff)
+        return gradient_estimate
+
+
+    def attack(self, examples, labels, max_iterations=100, spsa_batch_size=8192,
+               spsa_pert_size=0.01, adam_parameters=None, verbose=True):
+        """ Performs the gradient free optimization technique over the
+            perturbation parameters.
+        ARGS:
+            examples
+            labels
+            num_iterations: int - number of SPSA iterations performed
+            spsa_batch: int - number of gradient approximators we try for each
+                              iteration
+            step_size : float - step size of SPSA
+            adam_parameters : dict or None - if not None is a dictionary with
+                              keys ('alpha', 'beta_1', 'beta_2', 'epsilon')
+                              corresponding  to the parameters in the original
+                              Adam paper. If any or all of these parameters are
+                              not specified, we use the original hyperparams
+                              from the Usetao paper
+        RETURNS:
+            AdversarialPerturbation object with correct parameters.
+        """
+
+        ######################################################################
+        #   Setup boilerplate adversarial attack stuff                       #
+        ######################################################################
+
+        self.classifier_net.eval() # ALWAYS EVAL FOR BUILDING ADV EXAMPLES
+        var_examples = Variable(examples, requires_grad=True)
+        var_labels = Variable(labels, requires_grad=False)
+
+        perturbation = self.threat_model(examples)
+        perturbation.attach_originals(var_examples)
+
+        ######################################################################
+        #   Setup Adam state for faster optimization                         #
+        ######################################################################
+
+        adam_parameters = adam_parameters or {}
+        adam_alpha  = adam_parameters.get('alpha',   0.01)
+        adam_beta_1 = adam_parameters.get('beta_1',  0.9)
+        adam_beta_2 = adam_parameters.get('beta_2',  0.999)
+        adam_eps    = adam_parameters.get('epsilon', 1e-8)
+
+        biased_m = [torch.zeros_like(p) for p in perturbation.parameters()]
+        biased_v = [torch.zeros_like(p) for p in perturbation.parameters()]
+
+
+        ######################################################################
+        #   Build Adversarial Examples                                       #
+        ######################################################################
+
+        # Fix the 'reference' images for the loss function
+        self.loss_fxn.setup_attack_batch(examples)
+
+        for iter_no in range(1, max_iterations + 1):
+
+            # Use SPSA to get a zeroth order estimate of gradient
+            gradient_estimate = self._gradient_estimate(perturbation,
+                                                        var_examples,
+                                                        var_labels,
+                                                        spsa_batch_size,
+                                                        spsa_pert_size)
+
+            # Compute first/second moment estimates
+            biased_m = utils.add_tensor_list(
+                            utils.scale_tensor_list(biased_m, adam_beta_1),
+                            utils.scale_tensor_list(gradient_estimate,
+                                                    (1 - adam_beta_1)))
+            unbiased_m = utils.scale_tensor_list(biased_m,
+                                             1.0 / (1 - adam_beta_1 ** iter_no))
+
+            biased_v = utils.add_tensor_list(
+                            utils.scale_tensor_list(biased_v, adam_beta_2),
+                            utils.scale_tensor_list(
+                                utils.pow_tensor_list(gradient_estimate, 2),
+                                (1 - adam_beta_2)))
+            unbiased_v = utils.scale_tensor_list(biased_v,
+                                            1.0 / (1 - adam_beta_2 ** iter_no))
+
+            # Generate the parameter update and update the params
+            update_op = lambda a, b: adam_alpha * a / (torch.sqrt(b) + adam_eps)
+            update = utils.tensor_list_op(unbiased_m, unbiased_v, update_op)
+
+            # Project back onto feasible region
+            # (note, we're maximizing loss, so we add and don't subtract here)
+            perturbation.add_to_params(update)
+            perturbation.constrain_params()
+
+            if verbose:
+                self.validation_loop(perturbation(var_examples), var_labels,
+                                     iter_no=iter_no)
+
+        # output tensor with data
+        self.loss_fxn.cleanup_attack_batch()
+        return perturbation
+
+
+
+

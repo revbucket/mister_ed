@@ -402,6 +402,66 @@ def fold_mask(x, y, mask):
 
     return output
 
+def scale_tensor_list(tensor_list, scale_factor):
+    """ Takes in a list of tensor-like objects and returns the scaled version
+        of each. Does not mutate the list!
+    ARGS:
+        tensor_list : Tensor[] - list of tensors to be scaled
+        scale_factor : float - factor to multiply each tensor by
+    RETURNS:
+        new tensor list that resides in different memory location (same device!)
+    """
+    assert isinstance(tensor_list, list)
+    output = []
+    for el in tensor_list:
+        output.append(el * scale_factor)
+    return output
+
+def add_tensor_list(tensor_list_1, tensor_list_2):
+    """ Takes two lists of tensors each with identical shape and adds them,
+        returns their sum
+    ARGS:
+        tensor_list_1 : Tensor[] - one component of the summand
+        tensor_list_2 : Tensor[] - other component of the summad
+    RETURNS:
+        sum of the two tensor lists
+    """
+
+    output = []
+    for tensor_a, tensor_b in zip(tensor_list_1, tensor_list_2):
+        assert tensor_a.shape == tensor_b.shape
+        output.append(tensor_a + tensor_b)
+    return output
+
+
+def pow_tensor_list(tensor_list, power):
+    """ Takes elementwise powers of a list of tensor-like objects.
+        Does not mutate the list!
+    ARGS:
+        tensor_list : Tensor[] - list of tensors to be exponentiated
+        power: float - power to raise each element to
+    RETURNS:
+        list of elementwise powers of tensors
+    """
+    output = []
+    for el in tensor_list:
+        output.append(el ** power)
+    return output
+
+def tensor_list_op(tensor_list_1, tensor_list_2, op):
+    """ Performs a specified operation on a zip of two lists of tensors
+    ARGS:
+        tensor_list_1 : Tensor[] - first argument to op
+        tensor_list_2 : Tensor[] - second argument to op
+        op : Tensor, Tensor -> Tensor - operation on two tensors
+                e.g. for a sum, lambda a, b: a + b
+    RETURNS:
+        list of operations
+    """
+    return [op(tensor_a, tensor_b) for tensor_a, tensor_b in
+                                    zip(tensor_list_1, tensor_list_2)]
+
+
 
 ###############################################################################
 #                                                                             #

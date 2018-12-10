@@ -217,6 +217,16 @@ class AdversarialPerturbation(nn.Module):
         """
         raise NotImplementedError("Need to call subclass method here")
 
+
+    @initialized
+    def clone_perturbation():
+        """ Special technique to create a 'clone' of this perturbaton where
+            we return a new perturbation object with a deep copy of
+            parameters. Uses 'merge_perturbation' as a subroutine
+        """
+        pass
+
+
     @initialized
     def merge_perturbation(self, other, self_mask):
         """ Special technique to merge this perturbation with another
@@ -484,7 +494,15 @@ class DeltaAddition(AdversarialPerturbation):
 
     @initialized
     def add_to_params(self, grad_data):
-        """ sets params to be self.params + grad_data """
+        """ sets params to be self.params + grad_data
+        """
+        # grad data can either be a tensor of same shape/device as delta
+        # OR a singleton list containing a tensor of same shape/device as delta
+
+        if isinstance(grad_data, list):
+            assert len(grad_data) == 1
+            grad_data = grad_data[0]
+        assert grad_data.shape == self.delta.data.shape
         self.delta.data.add_(grad_data)
 
 
@@ -493,6 +511,14 @@ class DeltaAddition(AdversarialPerturbation):
         self.delta = nn.Parameter(utils.random_from_lp_ball(self.delta.data,
                                                             self.lp_style,
                                                             self.lp_bound))
+
+    @initialized
+    def clone_perturbation(self):
+        new_perturbation = DeltaAddition(self.threat_model,
+                                         self.perturbation_params)
+        new_perturbation._merge_setup(self.num_examples, self.delta.data)
+        self_mask = self.delta.new_ones((self.num_examples,), dtype=torch.uint8)
+        return self.merge_perturbation(new_perturbation, self_mask)
 
     @initialized
     def merge_perturbation(self, other, self_mask):
@@ -586,6 +612,14 @@ class ParameterizedXformAdv(AdversarialPerturbation):
         param_list = list(self.xform.parameters())
         assert len(param_list) == 1
         params = param_list[0]
+
+        # grad data can either be a tensor of same shape/device as delta
+        # OR a singleton list containing a tensor of same shape/device as delta
+        if isinstance(grad_data, list):
+            assert len(grad_data) == 1
+            grad_data = grad_data[0]
+        assert grad_data.shape == self.delta.data.shape
+
         params.data.add_(grad_data)
 
     @initialized
@@ -599,6 +633,16 @@ class ParameterizedXformAdv(AdversarialPerturbation):
 
         param.data.add_(self.xform.identity_params(self.xform.img_shape) +
                         random_perturb - self.xform.xform_params.data)
+
+
+    @initialized
+    def clone_perturbation(self):
+        new_perturbation = ParameterizedXformAdv(self.threat_model,
+                                                 self.perturbation_params)
+        new_perturbation._merge_setup(self.num_examples, self.xform)
+        self_mask = list(self.xform.parameters())[0]((self.num_examples,),
+                                                      dtype=torch.uint8)
+        return self.merge_perturbation(new_perturbation, self_mask)
 
 
     @initialized
@@ -732,6 +776,31 @@ class SequentialPerturbation(AdversarialPerturbation):
         for layer in self.pipeline:
             layer.update_params(step_fxn)
 
+    @initialized
+    def add_to_params(self, update_list):
+        """ A little messy here: update_list needs to be a list of length
+            len(pipeline) such that each element in this list can be passed
+            to its corresponding pipeline elements 'add_to_params' method
+        """
+        assert len(update_list) == len(self.pipeline)
+        for i in xrange(len(update_list)):
+            self.pipeline[i].add_to_params(update_list[i])
+
+
+    @initialized
+    def clone_perturbation(self):
+        new_pipeline = []
+        for layer in self.pipeline:
+            new_pipeline.append(layer.clone_perturbation())
+
+        layer_params, global_params = self.perturbation_params
+        new_perturbation = SequentialPerturbation(self.threat_model,
+                                                layer_params,
+                                                global_parameters=global_params,
+                                                preinit_pipeline=new_pipeline)
+        new_perturbation._merge_setup(self.num_examples)
+        return new_perturbation
+
 
     @initialized
     def merge_perturbation(self, other, self_mask):
@@ -742,7 +811,6 @@ class SequentialPerturbation(AdversarialPerturbation):
         for self_layer, other_layer in zip(self.pipeline, other.pipeline):
             new_pipeline.append(self_layer.merge_perturbation(other_layer,
                                                               self_mask))
-
 
         layer_params, global_params = self.perturbation_params
 
