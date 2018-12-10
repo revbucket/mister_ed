@@ -43,7 +43,6 @@ class EvaluationResult(object):
         """ to_eval is a dict of {str : toEval methods}.
         """
         self.attack_params = attack_params
-        self.classifier_net = attack_params.adv_attack_obj.classifier_net
         self.normalizer = attack_params.adv_attack_obj.normalizer
         if manual_gpu is not None:
             self.use_gpu = manual_gpu
