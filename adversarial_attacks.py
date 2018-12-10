@@ -779,13 +779,14 @@ class SPSA(AdversarialAttack):
 
             g_i_scale = (high_loss - low_loss) / (2 * spsa_pert_size)
             loss_diff = utils.scale_tensor_list(rademachers, g_i_scale)
+            loss_diff = [_.data for _ in loss_diff] # memory management?
             # Sum up all of them and then divide by batch size at the end
             if gradient_estimate is None:
                 gradient_estimate = loss_diff
             else:
                 gradient_estimate = utils.add_tensor_list(gradient_estimate,
                                                           loss_diff)
-        return gradient_estimate
+        return [_.data for _ in gradient_estimate]
 
 
     def attack(self, examples, labels, max_iterations=100, spsa_batch_size=8192,
