@@ -10,7 +10,6 @@ from __future__ import print_function
 
 import os
 import pickle
-
 import numpy as np
 import torch
 import torch.cuda as cuda
@@ -249,59 +248,8 @@ class NeuralFP(object):
 
         return logger
 
-    def eval(self, val_loader, normalizer, tau, logger=None):
-        """
-            Evaluation of neural fingerprint's detection accuracy
-                ARGS:
-                data_loader: Pytorch DataLoader for MNIST and CIFAR10. The shuffle
-                             flag need to be turned off
-                normalizer:  Deterministic normalizer for validation
-                tau: TBD
-        """
 
-        ######################################################################
-        #   Setup/ input validations                                         #
-        ######################################################################
-        self.classifier_net.eval()
-        assert not (self.use_gpu and not cuda.is_available())
-        if self.use_gpu:
-            self.classifier_net.cuda()
-
-        # Initialize NFLoss Object
-        loss = NFLoss(self.classifier_net, self.num_dx.self.num_class, self.fp_dx, self.fp_target, normalizer)
-
-        for idx, val_data in enumerate(val_loader, 0):
-            inputs, labels = val_data
-            if self.use_gpu:
-                inputs = inputs.cuda()
-                labels = labels.cuda()
-
-            real_bs = labels.size(0)  # real batch size
-
-            loss.setup_attack_batch(inputs)
-
-            # xlabel contains all labels for the dataset which need to be provided
-            xlabel = []
-
-            # indicate which examples are adversarial.
-            adv_mask = torch.zeros(real_bs)
-
-            # Check all class
-            for label in xlabel:
-                loss_fp = torch.sqrt(loss.forward(label))  # loss is MSE and we need L2 distance
-
-                # check distance
-                for i in range(real_bs):
-                    loss_per_example = loss_fp[i]  # can I access it in that way?
-                    if loss_per_example <= tau:
-                        adv_mask[i] = 1
-
-            loss.cleanup_attack_batch()
-        batch_accuracy = torch.sum(adv_mask) / real_bs
-        print("The Accuracy is ", batch_accuracy*100, "%")
-
-
-def main(batch_size=48):
+def train(batch_size=48):
     # set random seed for reproducibility
     torch.manual_seed(1)
     torch.cuda.manual_seed(1)  # ignore this if using CPU
@@ -329,6 +277,104 @@ def main(batch_size=48):
     logger = nfp.train(cifar_train, cifar_test, normalizer, num_epochs, train_loss,
                        verbosity_epoch)
 
+    return logger
+
+
+def test():
+    torch.manual_seed(1)
+    torch.cuda.manual_seed(1)  # ignore this if using CPU
+
+    # Match the normalizer using in the official implementation
+    normalizer = utils.DifferentiableNormalize(mean=[0.5, 0.5, 0.5],
+                                               std=[1.0, 1.0, 1.0])
+
+    # get the model
+    classifier_net = CW2_Net()
+    print("Eval using model", classifier_net)
+
+    # load the weight
+    PATH = "/home/tianweiy/Documents/deep_learning/AE/NeuralFP/NFP_model_weights/cifar/eps_0.006/numdx_30/ckpt" \
+           "/state_dict-ep_80.pth"
+    classifier_net.load_state_dict(torch.load(PATH))
+    print("Loading checkpoint")
+
+    # Original Repo uses pin memory here
+    cifar_test = cl.load_cifar_data('train', shuffle=False, batch_size=1)
+    normalizer = utils.DifferentiableNormalize(mean=[0.5, 0.5, 0.5], std=[1.0, 1.0, 1.0])
+
+    # restore fingerprints
+    fingerprint_dir = "/home/tianweiy/Documents/deep_learning/AE/NeuralFP/NFP_model_weights/cifar/eps_0.006/numdx_30/"
+
+    fixed_dxs = pickle.load(open(os.path.join(fingerprint_dir, "fp_inputs_dx.pkl"), "rb"), encoding='bytes')
+    fixed_dys = pickle.load(open(os.path.join(fingerprint_dir, "fp_outputs.pkl"), "rb"), encoding='bytes')
+
+    reject_thresholds = \
+        [0. + 0.001 * i for i in range(2000)]
+
+    print("Dataset CIFAR")
+
+    loss = NFLoss(classifier_net, num_dx=30, num_class=10, fp_dx=fixed_dxs, fp_target=fixed_dys, normalizer=normalizer)
+
+    # sanity check all clean examples are valid
+    for tau in reject_thresholds:
+        correct = 0.
+        total = 0.
+
+        for _, test_data in enumerate(cifar_test, 0):
+            inputs, _ = test_data
+            inputs = inputs.cuda()  # comment this if using CPU
+
+            l = loss.forward(inputs)
+
+            if l < tau:
+                correct += 1
+            total += 1
+
+        print("The Accuracy on Clean Example is ", correct / total * 100, "%")
+
+
+class CW2_Net(nn.Module):
+    def __init__(self):
+        super(CW2_Net, self).__init__()
+        self.conv1 = nn.Conv2d(3, 32, 3)
+        self.bnm1 = nn.BatchNorm2d(32, momentum=0.1)
+        self.conv2 = nn.Conv2d(32, 64, 3)
+        self.bnm2 = nn.BatchNorm2d(64, momentum=0.1)
+        self.conv3 = nn.Conv2d(64, 128, 3)
+        self.bnm3 = nn.BatchNorm2d(128, momentum=0.1)
+        self.conv4 = nn.Conv2d(128, 128, 3)
+        self.bnm4 = nn.BatchNorm2d(128, momentum=0.1)
+        self.fc1 = nn.Linear(3200, 256)
+        # self.dropout1 = nn.Dropout(p=0.35, inplace=False)
+        self.bnm5 = nn.BatchNorm1d(256, momentum=0.1)
+        self.fc2 = nn.Linear(256, 256)
+        self.bnm6 = nn.BatchNorm1d(256, momentum=0.1)
+        self.fc3 = nn.Linear(256, 10)
+        # self.dropout2 = nn.Dropout(p=0.35, inplace=False)
+        # self.dropout3 = nn.Dropout(p=0.35, inplace=False)
+
+    def forward(self, x):
+        out = F.relu(self.conv1(x))
+        out = self.bnm1(out)
+        out = F.relu(self.conv2(out))
+        out = self.bnm2(out)
+        out = F.max_pool2d(out, 2)
+        out = F.relu(self.conv3(out))
+        out = self.bnm3(out)
+        out = F.relu(self.conv4(out))
+        out = self.bnm4(out)
+        out = F.max_pool2d(out, 2)
+        out = out.view(out.size(0), -1)
+        # out = self.dropout1(out)
+        out = F.relu(self.fc1(out))
+        # out = self.dropout2(out)
+        out = self.bnm5(out)
+        out = F.relu(self.fc2(out))
+        # out = self.dropout3(out)
+        out = self.bnm6(out)
+        out = self.fc3(out)
+        return (out)
+
 
 if __name__ == '__main__':
-    main()
+    test()

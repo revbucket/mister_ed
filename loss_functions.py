@@ -8,6 +8,7 @@ import spatial_transformers as st
 from torch.autograd import Variable
 from functools import partial
 import adversarial_perturbations as ap
+import torch.functional as F
 
 """ Loss function building blocks """
 
@@ -522,7 +523,7 @@ class RelaxedTransformerLoss(ReferenceRegularizer):
         return transformation_loss + transformer_norm
 
 
-class NFLoss(ReferenceRegularizer):
+class NFLoss(PartialLoss):
     """ Implement Neural Fingerprinting Loss function. Especially, we add a
         regularization to cluster the perturbed logits to a specific region
         defined by fingerprint y
@@ -544,15 +545,7 @@ class NFLoss(ReferenceRegularizer):
         else:
             self.use_gpu = utils.use_gpu()
 
-    def setup_attack_batch(self, fix_im):
-        """ zero grads """
-        self.zero_grad()
-
-    def cleanup_attack_batch(self):
-        """ Cleanup function to zeros grads"""
-        self.zero_grad()
-
-    def forward(self, examples, labels, *args, **kwargs):
+    def forward(self, examples, debug = True):
         """Return Neural Fingerprinting Regularized Loss
         ARGS:
             TODO: What to do with the examples variable. Actually it is not needed but all attacks pass an examples into
@@ -560,53 +553,73 @@ class NFLoss(ReferenceRegularizer):
             examples: Variable (NxCxHxW) - should be same shape as
                       ctx.fix_im, is the examples we define loss for.
                       SHOULD BE IN [0.0, 1.0] RANGE
-            labels: Variable (longTensor of length N) - true classification
-                    output for fix_im/examples
         RETURNS:
             loss value of each example
         """
 
-        # real batch size
-        real_bs = examples.size(0)
+        # real batch size. Currently Only Support Batch Size 1
+        assert examples.size(0) is 1
 
         # Compute original logits
         if self.normalizer is not None:
             examples = self.normalizer.forward(examples)
 
         logits = self.classifier.forward(examples)
-        logits_norm = logits * torch.norm(logits, 2, 1, keepdim=True).reciprocal().expand(real_bs, self.num_class)
+        log_yhat = F.log_softmax(logits)
+        yhat = F.softmax(logits)
+        y_class = yhat.data.max(1, keepdim=True)[1]
+        y_class = utils.t2np(y_class, self.use_gpu)[0, 0]
 
-        # create perturbed images
-        adv_net = []  # Contain all perturbed images
-        for i in range(self.num_dx):
-            dx = self.fp_dx[i]
-            dx = utils.np2var(dx, self.use_gpu)  # now dx becomes torch var
-            adv_net = torch.cat((adv_net, examples + dx))
+        # Compute FingerPrint Logits
 
-        if self.normalizer is not None:
-            self.normalizer.differentiable_call()
-            normed_examples = self.normalizer.forward(adv_net)
-        else:
-            normed_examples = examples
+        # fixed_dxs : num_perturb x C x W x H
+        fixed_dxs = torch.cat(self.fp_dx, dim=0)
 
-        classifier_out = self.classifier.forward(normed_examples)
+        # compute x + dx : broadcast! num_perturb x C x W x H
+        xp = examples + fixed_dxs
 
-        # get the respective fingerprint batch x num_dx x num_class
-        fp_target_var = torch.index_select(self.fp_target, 0, labels)
+        logits_p = self.classifier.forward(xp)
+        log_yhat_p = F.log_softmax(logits_p)
+        yhat_p = F.softmax(logits_p)
 
-        # compute fingerprint loss
-        reg_adv_loss = 0
-        for i in range(self.num_dx):
-            fp_target_var_i = fp_target_var[:, i, :]  # batch * num_class
-            # TODO: Check Correctness Here. Original Method is too long in one line. What is the style?
-            logits_p_norm = classifier_out[i * real_bs:(i + 1) * real_bs] / torch.norm(classifier_out, 2, 1,
-                                                                                       keepdim=True).expand(
-                real_bs, self.num_class)
-            diff = logits_p_norm - logits_norm + 0.00001
+        if debug:
+            print("logits_p", logits_p, "log_yhat_p", log_yhat_p)
+            print("yhat_p", yhat_p)
 
-            regularize_adv_criterion = nn.MSELoss(reduction='none')
-            reg_adv_loss += regularize_adv_criterion(diff, fp_target_var_i)
-            # Do we need to divide num_batch here? The official implementation doesn't do this
+        # Get finger print delta y
+        # num_target_class * num_perturb * num_class
+        fixed_dys = self.fp_target
 
-        # TODO:Not Squeeze here. reg_adv_loss is Batch * num_class
-        return reg_adv_loss
+        # Get Normalized Logits
+        logits_norm = logits * torch.norm(logits, 2, 1, keepdim=True).reciprocal().expand(1, self.num_class)
+        logits_p_norm = logits_p * torch.norm(logits_p, 2, 1, keepdim=True).reciprocal().expand(self.num_dx,
+                                                                                                self.num_class)
+        if debug:
+            print("logits_norm", logits_norm)
+            print("logits_p_norm", logits_p_norm.size(), torch.norm(logits_p_norm, 2, 1))
+
+        diff_logits_p = logits_p_norm - logits_norm
+        diff = fixed_dys - diff_logits_p  # Broadcast! Compute the distance to all labels's dy
+
+        if debug:
+            print("diff_logits_p", diff_logits_p)
+            print("fixed_dys", fixed_dys)
+            print("diff", diff)
+
+        diff_norm = torch.norm(diff, 2, dim=2)
+
+        if debug:
+            print("diff_norm (over dim 2 of diff)", diff_norm)
+
+        diff_norm = torch.mean(diff_norm, dim=1)
+
+        if debug:
+            print("diff_norm after mean", diff_norm)
+
+        y_class_with_fp = diff_norm.data.min(0, keepdim=True)[1]
+        y_class_with_fp = utils.t2np(y_class_with_fp, self.use_gpu)[0]
+
+        if debug:
+            print("y_class_with_fp", y_class_with_fp, diff_norm.data.min(0, keepdim=True))
+
+        return diff_norm.data.min(0, keepdim=True)[0], y_class, y_class_with_fp
