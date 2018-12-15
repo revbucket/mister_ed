@@ -341,7 +341,7 @@ def test():
     # logger.setLevel(logging.WARNING)
 
     # sanity check all clean examples are valid
-    print("USE FGSM")
+    print("USE PGD")
     for tau in reject_thresholds:
         adversarial = 0.
         total = 0.
@@ -362,8 +362,8 @@ def test():
 
             attack_loss = RegularizedLoss(losses=losses, scalars=scalars)
 
-            fgsm_attack_object = aa.FGSM(classifier_net, normalizer, delta_threat, attack_loss)
-            perturbation_out = fgsm_attack_object.attack(inputs, labels, verbose=False)
+            pgd_attack_object = aa.PGD(classifier_net, normalizer, delta_threat, attack_loss)
+            perturbation_out = pgd_attack_object.attack(inputs, labels, verbose=False)
             adv_examples = perturbation_out.adversarial_tensors()
 
             assert adv_examples.size(0) is 1
@@ -391,7 +391,7 @@ def test():
 
         # print("The Accuracy on Clean Example is ", correct / total * 100, "%")
         logger.exception("True Positive is " + str(adversarial / total * 100) + '%')
-        logger.exception("False Positive is ", str(fpositive / total * 100), '%')
+        logger.exception("False Positive is " + str(fpositive / total * 100)+ '%')
 
 
 class CW2_Net(nn.Module):
