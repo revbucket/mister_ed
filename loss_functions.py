@@ -8,7 +8,7 @@ import spatial_transformers as st
 from torch.autograd import Variable
 from functools import partial
 import adversarial_perturbations as ap
-import torch.functional as F
+import torch.nn.functional as F
 
 """ Loss function building blocks """
 
@@ -545,7 +545,7 @@ class NFLoss(PartialLoss):
         else:
             self.use_gpu = utils.use_gpu()
 
-    def forward(self, examples, debug = True):
+    def forward(self, examples, labels, *args, **kwargs ):
         """Return Neural Fingerprinting Regularized Loss
         ARGS:
             TODO: What to do with the examples variable. Actually it is not needed but all attacks pass an examples into
@@ -553,34 +553,39 @@ class NFLoss(PartialLoss):
             examples: Variable (NxCxHxW) - should be same shape as
                       ctx.fix_im, is the examples we define loss for.
                       SHOULD BE IN [0.0, 1.0] RANGE
+            debug: Set the verbosity level
         RETURNS:
             loss value of each example
         """
 
         # real batch size. Currently Only Support Batch Size 1
         assert examples.size(0) is 1
+        debug = False
+
+        # examples = torch.unsqueeze(examples, dim=0)
+        # print(examples.shape)
 
         # Compute original logits
         if self.normalizer is not None:
             examples = self.normalizer.forward(examples)
 
         logits = self.classifier.forward(examples)
-        log_yhat = F.log_softmax(logits)
-        yhat = F.softmax(logits)
+        log_yhat = F.log_softmax(logits, dim=1)
+        yhat = F.softmax(logits, dim=1)
         y_class = yhat.data.max(1, keepdim=True)[1]
-        y_class = utils.t2np(y_class, self.use_gpu)[0, 0]
+        # y_class = utils.t2np(y_class, self.use_gpu)[0, 0]
 
         # Compute FingerPrint Logits
 
         # fixed_dxs : num_perturb x C x W x H
-        fixed_dxs = torch.cat(self.fp_dx, dim=0)
+        fixed_dxs = self.fp_dx
 
         # compute x + dx : broadcast! num_perturb x C x W x H
         xp = examples + fixed_dxs
 
         logits_p = self.classifier.forward(xp)
-        log_yhat_p = F.log_softmax(logits_p)
-        yhat_p = F.softmax(logits_p)
+        log_yhat_p = F.log_softmax(logits_p, dim=1)
+        yhat_p = F.softmax(logits_p, dim=1)
 
         if debug:
             print("logits_p", logits_p, "log_yhat_p", log_yhat_p)
@@ -617,9 +622,9 @@ class NFLoss(PartialLoss):
             print("diff_norm after mean", diff_norm)
 
         y_class_with_fp = diff_norm.data.min(0, keepdim=True)[1]
-        y_class_with_fp = utils.t2np(y_class_with_fp, self.use_gpu)[0]
+        # y_class_with_fp = utils.t2np(y_class_with_fp, self.use_gpu)[0]
 
         if debug:
             print("y_class_with_fp", y_class_with_fp, diff_norm.data.min(0, keepdim=True))
 
-        return diff_norm.data.min(0, keepdim=True)[0], y_class, y_class_with_fp
+        return diff_norm.data.min(0, keepdim=True)[0]

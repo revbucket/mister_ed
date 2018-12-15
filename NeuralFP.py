@@ -19,11 +19,14 @@ import torch.optim as optim
 from torch.autograd import Variable
 from cifar10 import cifar_loader as cl
 from loss_functions import NFLoss
-
+import adversarial_perturbations as ap
+import adversarial_attacks as aa
 import utils.checkpoints as checkpoints
 import utils.pytorch_utils as utils
 import time
-
+import logging
+from loss_functions import RegularizedLoss
+from loss_functions import PartialXentropy
 
 class NeuralFP(object):
     """ Main class to do the training and detection """
@@ -285,6 +288,7 @@ def test():
     torch.cuda.manual_seed(1)  # ignore this if using CPU
 
     # Match the normalizer using in the official implementation
+    # TODO: Check Normalizer's effect
     normalizer = utils.DifferentiableNormalize(mean=[0.5, 0.5, 0.5],
                                                std=[1.0, 1.0, 1.0])
 
@@ -296,6 +300,8 @@ def test():
     PATH = "/home/tianweiy/Documents/deep_learning/AE/NeuralFP/NFP_model_weights/cifar/eps_0.006/numdx_30/ckpt" \
            "/state_dict-ep_80.pth"
     classifier_net.load_state_dict(torch.load(PATH))
+    classifier_net.cuda()
+    classifier_net.eval()
     print("Loading checkpoint")
 
     # Original Repo uses pin memory here
@@ -305,32 +311,87 @@ def test():
     # restore fingerprints
     fingerprint_dir = "/home/tianweiy/Documents/deep_learning/AE/NeuralFP/NFP_model_weights/cifar/eps_0.006/numdx_30/"
 
-    fixed_dxs = pickle.load(open(os.path.join(fingerprint_dir, "fp_inputs_dx.pkl"), "rb"), encoding='bytes')
-    fixed_dys = pickle.load(open(os.path.join(fingerprint_dir, "fp_outputs.pkl"), "rb"), encoding='bytes')
+    # fixed_dxs = pandas.read_pickle(os.path.join(fingerprint_dir, "fp_inputs_dx.pkl"))
+    # fixed_dys = pandas.read_pickle(os.path.join(fingerprint_dir, "fp_outputs.pkl"))
+
+    fixed_dxs = np.load(os.path.join(fingerprint_dir, "fp_inputs_dx.pkl"), encoding='bytes')
+    fixed_dys = np.load(os.path.join(fingerprint_dir, "fp_outputs.pkl"), encoding='bytes')
+
+    # print(fixed_dxs)
+    # print(fixed_dys)
+
+    fixed_dxs = utils.np2var(np.concatenate(fixed_dxs, axis=0), cuda=True)
+    fixed_dys = utils.np2var(fixed_dys, cuda=True)
+
+    # print(fixed_dxs.shape)
+    # print(fixed_dys.shape)
 
     reject_thresholds = \
-        [0. + 0.001 * i for i in range(2000)]
+        [0. + 0.1 * i for i in range(0, 20)]
 
     print("Dataset CIFAR")
 
     loss = NFLoss(classifier_net, num_dx=30, num_class=10, fp_dx=fixed_dxs, fp_target=fixed_dys, normalizer=normalizer)
 
+    logger = logging.getLogger('sanity')
+    hdlr = logging.FileHandler('/home/tianweiy/Documents/deep_learning/AE/NeuralFP/log/pgd.log')
+    formatter = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
+    hdlr.setFormatter(formatter)
+    logger.addHandler(hdlr)
+    # logger.setLevel(logging.WARNING)
+
     # sanity check all clean examples are valid
+    print("USE FGSM")
     for tau in reject_thresholds:
-        correct = 0.
+        adversarial = 0.
         total = 0.
+        fpositive = 0.
 
-        for _, test_data in enumerate(cifar_test, 0):
-            inputs, _ = test_data
+        for idx, test_data in enumerate(cifar_test, 0):
+            inputs, labels = test_data
             inputs = inputs.cuda()  # comment this if using CPU
+            labels = labels.cuda()
 
-            l = loss.forward(inputs)
+            # build adversarial example
+            delta_threat = ap.ThreatModel(ap.DeltaAddition, {'lp_style': 'inf',
+                                                             'lp_bound': 8.0 / 255})
 
-            if l < tau:
-                correct += 1
+            vanilla_loss = PartialXentropy(classifier_net, normalizer)
+            losses = {'vanilla': vanilla_loss, 'fingerprint': loss}
+            scalars = {'vanilla': 1., 'fingerprint': -1.}
+
+            attack_loss = RegularizedLoss(losses=losses, scalars=scalars)
+
+            fgsm_attack_object = aa.FGSM(classifier_net, normalizer, delta_threat, attack_loss)
+            perturbation_out = fgsm_attack_object.attack(inputs, labels, verbose=False)
+            adv_examples = perturbation_out.adversarial_tensors()
+
+            assert adv_examples.size(0) is 1
+
+            # compute adversarial loss
+            l_adv = loss.forward(adv_examples, labels)
+            loss.zero_grad()
+
+            # compute real image loss
+            l_real = loss.forward(inputs, labels)
+            loss.zero_grad()
+
+            if l_adv > tau:
+                adversarial += 1
+            if l_real > tau:
+                fpositive +=1
+
             total += 1
 
-        print("The Accuracy on Clean Example is ", correct / total * 100, "%")
+            if idx % 1000 == 0:
+                print("FINISH", idx, "EXAMPLES")
+                print("Adversarial Percent is ", adversarial/total*100, "%")
+                print("False Positive is ", fpositive/total*100, "%")
+
+
+        # print("The Accuracy on Clean Example is ", correct / total * 100, "%")
+        logger.exception("True Positive is " + str(adversarial / total * 100) + '%')
+        logger.exception("False Positive is ", str(fpositive / total * 100), '%')
 
 
 class CW2_Net(nn.Module):
