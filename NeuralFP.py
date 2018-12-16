@@ -335,7 +335,7 @@ def test():
     loss = NFLoss(classifier_net, num_dx=30, num_class=10, fp_dx=fixed_dxs, fp_target=fixed_dys, normalizer=normalizer)
 
     logger = logging.getLogger('sanity')
-    hdlr = logging.FileHandler('/home/tianweiy/Documents/deep_learning/AE/NeuralFP/log/pgd_2000_16_5_testV2.log')
+    hdlr = logging.FileHandler('/home/tianweiy/Documents/deep_learning/AE/NeuralFP/log/pgd_2000_16_5_testV3.log')
     formatter = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
     hdlr.setFormatter(formatter)
     logger.addHandler(hdlr)
@@ -395,12 +395,12 @@ def test():
             true_positive = 0
             false_positive = 0
 
-            for adv in enumerate(dis_adv, 0):
-                if l_adv > tau:
+            for adv in dis_adv:
+                if adv > tau:
                     true_positive += 1
 
-            for real in enumerate(dis_real, 0):
-                if l_real > tau:
+            for real in dis_real:
+                if real > tau:
                     false_positive += 1
 
             logger.exception("The Threshold is "+str(tau))
@@ -456,3 +456,4 @@ class CW2_Net(nn.Module):
 
 if __name__ == '__main__':
     test()
+
