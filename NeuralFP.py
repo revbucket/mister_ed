@@ -28,6 +28,7 @@ import logging
 from loss_functions import RegularizedLoss
 from loss_functions import PartialXentropy
 
+
 class NeuralFP(object):
     """ Main class to do the training and detection """
 
@@ -305,7 +306,7 @@ def test():
     print("Loading checkpoint")
 
     # Original Repo uses pin memory here
-    cifar_test = cl.load_cifar_data('train', shuffle=False, batch_size=1)
+    cifar_test = cl.load_cifar_data('val', shuffle=False, batch_size=64)
     normalizer = utils.DifferentiableNormalize(mean=[0.5, 0.5, 0.5], std=[1.0, 1.0, 1.0])
 
     # restore fingerprints
@@ -327,43 +328,48 @@ def test():
     # print(fixed_dys.shape)
 
     reject_thresholds = \
-        [0. + 0.1 * i for i in range(0, 20)]
+        [0. + 0.001 * i for i in range(0, 2000)]
 
     print("Dataset CIFAR")
 
     loss = NFLoss(classifier_net, num_dx=30, num_class=10, fp_dx=fixed_dxs, fp_target=fixed_dys, normalizer=normalizer)
 
     logger = logging.getLogger('sanity')
-    hdlr = logging.FileHandler('/home/tianweiy/Documents/deep_learning/AE/NeuralFP/log/pgd.log')
+    hdlr = logging.FileHandler('/home/tianweiy/Documents/deep_learning/AE/NeuralFP/log/pgd_2000_16_5_testV2.log')
     formatter = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
     hdlr.setFormatter(formatter)
     logger.addHandler(hdlr)
-    # logger.setLevel(logging.WARNING)
+    logger.setLevel(logging.WARNING)
 
     # sanity check all clean examples are valid
-    print("USE PGD")
-    for tau in reject_thresholds:
-        adversarial = 0.
-        total = 0.
-        fpositive = 0.
+    print("USE PGD 2000 STEP")
+    for weight in [1., 10., 100., 1000., 10000.]:
+        logger.exception("Use Weight " + str(weight))
+
+        dis_adv = []
+        dis_real = []
 
         for idx, test_data in enumerate(cifar_test, 0):
             inputs, labels = test_data
+
+            inputs = inputs[0].unsqueeze(0)
+            labels = labels[0].unsqueeze(0)
+
             inputs = inputs.cuda()  # comment this if using CPU
             labels = labels.cuda()
 
             # build adversarial example
             delta_threat = ap.ThreatModel(ap.DeltaAddition, {'lp_style': 'inf',
-                                                             'lp_bound': 8.0 / 255})
+                                                             'lp_bound': 16.0 / 255})
 
             vanilla_loss = PartialXentropy(classifier_net, normalizer)
             losses = {'vanilla': vanilla_loss, 'fingerprint': loss}
-            scalars = {'vanilla': 1., 'fingerprint': -1.}
+            scalars = {'vanilla': 1., 'fingerprint': -1 * weight}
 
             attack_loss = RegularizedLoss(losses=losses, scalars=scalars)
 
             pgd_attack_object = aa.PGD(classifier_net, normalizer, delta_threat, attack_loss)
-            perturbation_out = pgd_attack_object.attack(inputs, labels, verbose=False)
+            perturbation_out = pgd_attack_object.attack(inputs, labels, num_iterations=2000, verbose=False)
             adv_examples = perturbation_out.adversarial_tensors()
 
             assert adv_examples.size(0) is 1
@@ -376,22 +382,33 @@ def test():
             l_real = loss.forward(inputs, labels)
             loss.zero_grad()
 
-            if l_adv > tau:
-                adversarial += 1
-            if l_real > tau:
-                fpositive +=1
+            dis_adv.append(l_adv)
+            dis_real.append(l_real)
+            # if idx % 1000 == 0:
+            #    print("FINISH", idx, "EXAMPLES")
+            #    print("Adversarial Percent is ", adversarial / total * 100, "%")
+            #    print("False Positive is ", fpositive / total * 100, "%")
 
-            total += 1
+        total = len(dis_adv)
 
-            if idx % 1000 == 0:
-                print("FINISH", idx, "EXAMPLES")
-                print("Adversarial Percent is ", adversarial/total*100, "%")
-                print("False Positive is ", fpositive/total*100, "%")
+        for tau in reject_thresholds:
+            true_positive = 0
+            false_positive = 0
+
+            for adv in enumerate(dis_adv, 0):
+                if l_adv > tau:
+                    true_positive += 1
+
+            for real in enumerate(dis_real, 0):
+                if l_real > tau:
+                    false_positive += 1
+
+            logger.exception("The Threshold is "+str(tau))
+            logger.exception("True Positive is " + str(true_positive / total * 100) + '%')
+            logger.exception("False Positive is " + str(false_positive / total * 100) + '%')
+            # print("The Accuracy on Clean Example is ", correct / total * 100, "%")
 
 
-        # print("The Accuracy on Clean Example is ", correct / total * 100, "%")
-        logger.exception("True Positive is " + str(adversarial / total * 100) + '%')
-        logger.exception("False Positive is " + str(fpositive / total * 100)+ '%')
 
 
 class CW2_Net(nn.Module):
