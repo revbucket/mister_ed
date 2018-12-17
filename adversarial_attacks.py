@@ -651,7 +651,6 @@ class CarliniWagner(AdversarialAttack):
             ##################################################################
             if verbose:
                 print("Starting binary_search_step %02d..." % bin_search_step)
-                print(loss_fxn.scalars)
             prev_loss = MAXFLOAT
             optimizer = optim.Adam(perturbation.parameters(), lr=0.0001)
 
