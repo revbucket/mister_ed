@@ -569,7 +569,7 @@ class CarliniWagner(AdversarialAttack):
 
     def attack(self, examples, labels, targets=None, initial_lambda=1.0,
                num_bin_search_steps=10, num_optim_steps=1000,
-               confidence=0.0, warm_start=False, verbose=True):
+               confidence=0.0, warm_start=False, stop_early=True, verbose=True):
         """ Performs Carlini Wagner attack on provided examples to make them
             not get classified as the labels.
         ARGS:
@@ -587,6 +587,8 @@ class CarliniWagner(AdversarialAttack):
             warm_start : boolean - if True, we start each binary search step
                                    using the perturbation from the previous
                                    binsearch step (but with the new loss)
+            stop_early : boolean - if True, we stop after 100 optimizer iterations
+                                   if the loss hasn't gone down too much., 
         RETURNS:
             AdversarialPerturbation object with correct parameters.
             Calling perturbation() gets Variable of output and
@@ -651,19 +653,25 @@ class CarliniWagner(AdversarialAttack):
                 print("Starting binary_search_step %02d..." % bin_search_step)
                 print(loss_fxn.scalars)
             prev_loss = MAXFLOAT
-            optimizer = optim.Adam(perturbation.parameters(), lr=0.001)
+            optimizer = optim.Adam(perturbation.parameters(), lr=0.0001)
 
             for optim_step in range(num_optim_steps):
+                perturbation.zero_grad()
+                loss = loss_fxn.forward(perturbation(var_examples), var_labels,
+                                        perturbation=perturbation)
+                loss_sum = loss.sum()
+                torch.autograd.backward(loss_sum)
+                optimizer.step()
 
                 if verbose and optim_step > 0 and optim_step % 25 == 0:
                     print("Optim search: %s, Loss: %s" %
-                          (optim_step, prev_loss))
+                          (optim_step, loss))
+                    self.validation_loop(perturbation(var_examples),
+                                         var_labels, iter_no=optim_step)                    
 
-                loss_sum = self._optimize_step(optimizer, perturbation,
-                                               var_examples, var_labels,
-                                               var_scale, loss_fxn)
-
-                if loss_sum + 1e-10 > prev_loss * 0.99999 and optim_step >= 100:
+                if (loss_sum + 1e-10 > prev_loss * 0.99999 and
+                    optim_step >= 100 and
+                    stop_early):                    
                     if verbose:
                         print(("...stopping early on binary_search_step %02d "
                                " after %03d iterations" ) % (bin_search_step,
@@ -682,7 +690,7 @@ class CarliniWagner(AdversarialAttack):
 
 
             bin_search_perts = perturbation(var_examples)
-            bin_search_out = self.classifier_net.forward(bin_search_perts)
+            bin_search_out = self.classifier_net.forward(self.normalizer(bin_search_perts))
             successful_attack_idxs = self._batch_compare(bin_search_out,
                                                          var_labels)
 
@@ -694,7 +702,6 @@ class CarliniWagner(AdversarialAttack):
 
 
             successful_mask = successful_attack_idxs * successful_dist_idxs
-
             # And then generate a new 'best distance' and 'best perturbation'
 
             best_results['best_dist'] = utils.fold_mask(batch_dists,
