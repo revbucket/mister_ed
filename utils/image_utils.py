@@ -185,6 +185,7 @@ def nchw_l2(x, y, squared=True):
         temp = torch.sum(temp, i, keepdim=True)
 
     if not squared:
-        temp = torch.pow(temp, 0.5)
+        eps = 1e-10 # for stability
+        temp = torch.pow(temp + eps, 0.5)
 
     return temp.squeeze()

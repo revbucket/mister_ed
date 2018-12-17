@@ -268,6 +268,7 @@ class ReferenceRegularizer(PartialLoss):
                     SHOULD BE IN [0.0, 1.0] RANGE
         """
         self.fix_im = fix_im
+        self.fix_im_numel = float(fix_im.numel()) / fix_im.shape[0]
         self.zero_grad()
 
 
@@ -277,6 +278,7 @@ class ReferenceRegularizer(PartialLoss):
         """
         old_fix_im = self.fix_im
         self.fix_im = None
+        self.fix_im_numel = None
         del old_fix_im
         self.zero_grad()
 
@@ -292,6 +294,8 @@ class SoftLInfRegularization(ReferenceRegularizer):
     '''
     def __init__(self, fix_im, **kwargs):
         super(SoftLInfRegularization, self).__init__(fix_im)
+
+
 
     def forward(self, examples, *args, **kwargs):
         # ARGS should have one element, which serves as the tau value
@@ -323,7 +327,8 @@ class L2Regularization(ReferenceRegularizer):
 
     def forward(self, examples, *args, **kwargs):
         l2_dist = img_utils.nchw_l2(examples, self.fix_im,
-                                    squared=True).view(-1, 1)
+                                    squared=False).view(-1, 1)
+        #l2_dist = l2_dist / self.fix_im_numel
         return l2_dist.squeeze()
 
 #############################################################################

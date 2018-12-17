@@ -266,7 +266,8 @@ def batchwise_norm(examples, lp, dim=0):
 
 def batchwise_lp_project(x, lp, lp_bound, dim=0):
     """ Projects x (a N-by-(...) TENSOR) to be a N-by-(...) TENSOR into the
-        provided lp ball
+        provided lp ball. Note that this is the identity operation if the
+        provided tensor is already inside the LP ball.
     ARGS:
         x : Tensor (N-by-(...)) - arbitrary style
         lp : 'inf' or int - which style of lp we use
@@ -307,37 +308,65 @@ def random_from_lp_ball(tensorlike, lp, lp_bound, dim=0):
     """ Returns a new object of the same type/shape as tensorlike that is
         randomly samples from the unit ball.
 
-        NOTE THIS IS NOT A UNIFORM SAMPLING METHOD!
-        (that's hard to implement, https://mathoverflow.net/a/9192/123034)
+
 
     ARGS:
         tensorlike : Tensor - reference object for which we generate
                      a new object of same shape/memory_location
         lp : int or 'inf' - which style of lp we use
         lp_bound : float - size of the L
-        dim : int - which dimension is the 'keep dimension'
+        dim : int - which dimension is the 'minibatch' dimension
     RETURNS:
         new tensorlike where each slice across dim is uniform across the
         lp ball of size lp_bound
     """
     assert isinstance(lp, int) or lp == 'inf'
 
-
-
-    rand_direction = torch.rand(tensorlike.shape).type(tensorlike.type())
-
     if lp == 'inf':
+        rand_direction = torch.rand_like(tensorlike)
         return rand_direction * (2 * lp_bound) - lp_bound
+
+    elif lp == 2:
+        # http://compneuro.uwaterloo.ca/files/publications/voelker.2017.pdf
+        # Transpose so 0 is the dimension we fixate on
+        tensorlike = tensorlike.transpose(dim, 0)
+        num_examples = tensorlike.shape[0]
+        elements_per_example = tensorlike.numel() / num_examples
+
+        # First sample from the n-sphere (gaussian and then normalize)
+        rand = torch.normal(torch.zeros_like(tensorlike),
+                            torch.ones_like(tensorlike))
+        rand = rand.view(num_examples, -1)
+        rand = rand.div(rand.norm(2, dim=1).unsqueeze(1)) *  lp_bound
+
+
+        # And then scale by U[0,1]^(1/n)
+        scale = torch.rand_like(rand) ** (1.0 / elements_per_example)
+        rand = rand * scale
+
+        # Transpose the answer back to input order
+        return rand.view(*tensorlike.shape).transpose(dim, 0)
+
     else:
+        #NOTE THIS IS NOT A UNIFORM SAMPLING METHOD!
+        #(that's hard to implement, https://mathoverflow.net/a/9192/123034)
+        rand_direction = torch.rand_like(tensorlike)
+
         rand_direction = rand_direction - 0.5 # allow for sign swapping
         # first magnify such that each element is above the ball
         min_norm = torch.min(batchwise_norm(rand_direction.abs(), lp, dim=dim))
         rand_direction = rand_direction / (min_norm + 1e-6)
         rand_magnitudes = torch.rand(tensorlike.shape[dim]).type(
                                                             tensorlike.type())
-        rand_magnitudes = rand_magnitudes.unsqueeze(1)
-        rand_magnitudes = rand_magnitudes.expand(*rand_direction.shape)
 
+        # compute expand shape
+        expand_shape = list(rand_direction.shape)
+        for i in range(len(expand_shape)):
+            if i != dim:
+                expand_shape[i] = 1
+
+        rand_magnitudes = rand_magnitudes.view(*expand_shape)\
+                                         .expand(*rand_direction.shape)
 
 
         return torch.renorm(rand_direction, lp, dim, lp_bound) * rand_magnitudes

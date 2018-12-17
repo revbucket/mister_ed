@@ -252,7 +252,7 @@ class PGD(AdversarialAttack):
         self.loss_fxn = loss_fxn # WE MAXIMIZE THIS!!!
 
     def attack(self, examples, labels, step_size=1.0/255.0,
-               num_iterations=20, random_init=False, signed=True,
+               num_iterations=20, random_init=False, signed=False,
                optimizer=None, optimizer_kwargs=None,
                loss_convergence=0.999, verbose=True,
                keep_best=True):
@@ -343,6 +343,7 @@ class PGD(AdversarialAttack):
 
         for iter_no in range(max_iterations):
             perturbation.zero_grad()
+
             loss = self.loss_fxn.forward(perturbation(var_examples), var_labels,
                                          perturbation=perturbation,
                                          output_per_example=keep_best)
@@ -372,7 +373,6 @@ class PGD(AdversarialAttack):
                                                             best_perturbation,
                                                             mask_val)
 
-
             self.validator((best_perturbation or perturbation)(var_examples),
                            var_labels, iter_no=iter_no)
 
@@ -385,7 +385,9 @@ class PGD(AdversarialAttack):
             prev_loss = float(loss)
 
 
-
+        # EXIT SEQUENCE
+        if keep_best:
+            perturbation = best_perturbation
         perturbation.zero_grad()
         self.loss_fxn.cleanup_attack_batch()
         perturbation.attach_originals(examples)
@@ -567,7 +569,7 @@ class CarliniWagner(AdversarialAttack):
 
     def attack(self, examples, labels, targets=None, initial_lambda=1.0,
                num_bin_search_steps=10, num_optim_steps=1000,
-               confidence=0.0, verbose=True):
+               confidence=0.0, warm_start=False, verbose=True):
         """ Performs Carlini Wagner attack on provided examples to make them
             not get classified as the labels.
         ARGS:
@@ -582,6 +584,9 @@ class CarliniWagner(AdversarialAttack):
             confidence : float - how great the difference in the logits must be
                                  for the carlini_loss to be zero. Overwrites the
                                  self.carlini_loss.kappa value
+            warm_start : boolean - if True, we start each binary search step
+                                   using the perturbation from the previous
+                                   binsearch step (but with the new loss)
         RETURNS:
             AdversarialPerturbation object with correct parameters.
             Calling perturbation() gets Variable of output and
@@ -630,17 +635,21 @@ class CarliniWagner(AdversarialAttack):
         var_scale = Variable(torch.ones(num_examples, 1).type(self._dtype) *
                              initial_lambda).squeeze()
         var_scale_hi = Variable(torch.ones(num_examples).type(self._dtype)
-                                * 128).squeeze() # HARDCODED UPPER LIMIT
+                                * 256).squeeze() # HARDCODED UPPER LIMIT
 
 
         for bin_search_step in range(num_bin_search_steps):
-            perturbation = self.threat_model(examples)
+            if warm_start:
+                perturbation = best_results['best_perturbation']\
+                                            .clone_perturbation()
+            else:
+                perturbation = self.threat_model(examples)
             ##################################################################
             #   Optimize with a given scale constant                         #
             ##################################################################
             if verbose:
                 print("Starting binary_search_step %02d..." % bin_search_step)
-
+                print(loss_fxn.scalars)
             prev_loss = MAXFLOAT
             optimizer = optim.Adam(perturbation.parameters(), lr=0.001)
 
@@ -697,12 +706,14 @@ class CarliniWagner(AdversarialAttack):
                                               best_results['best_perturbation'],
                                               successful_mask)
 
-            # And then adjust the scale variables (lambdas)
+            # And then adjust the scale variables (lambdas) in the loss
             new_scales = self.tweak_lambdas(var_scale_lo, var_scale_hi,
                                             var_scale,
                                             Variable(successful_mask))
 
             var_scale_lo, var_scale_hi, var_scale = new_scales
+            loss_fxn.scalars['carlini_loss'] = var_scale
+
 
         # End binary search loop
         if verbose:
@@ -727,10 +738,11 @@ class CarliniWagner(AdversarialAttack):
 ##############################################################################
 
 class SPSA(AdversarialAttack):
-    # Simultaneous Perturbation Stochastic Approximation (SPSA) is a
-    # gradient-free optimization technique, used in the context of AE's in
-    # https://arxiv.org/pdf/1802.05666.pdf
-    # (note, we follow the implementation ^ and use the Adam update rule)
+    """ Simultaneous Perturbation Stochastic Approximation (SPSA) is a
+        gradient-free optimization technique, used in the context of AE's in
+        https://arxiv.org/pdf/1802.05666.pdf
+        (note, we follow the implementation ^ and use the Adam update rule)
+    """
     def __init__(self, classifier_net, normalizer, threat_model, loss_fxn,
                  manual_gpu=None):
         super(SPSA, self).__init__(classifier_net, normalizer, threat_model,
@@ -885,5 +897,93 @@ class SPSA(AdversarialAttack):
         return perturbation
 
 
+
+##############################################################################
+#                                                                            #
+#                    Jacobian Saliency Map Attack (JSMA)                     #
+#                                                                            #
+##############################################################################
+
+
+class JSMA(AdversarialAttack):
+    """ Jacobian Saliency Map Attack
+        first outlined in this paper: https://arxiv.org/pdf/1511.07528.pdf
+    """
+
+    def __init__(self, classifier_net, normalizer, threat_model, loss_fxn,
+                 manual_gpu=None):
+        super(JSMA, self).__init__(classifier_net, normalizer, threat_model,
+                                   manual_gpu=manual_gpu)
+        self.loss_fxn = loss_fxn
+        self.num_classes = None
+
+
+    def _get_saliency_map(self, perturbation, examples, labels, targets):
+        """ Computes the saliency map """
+        pert_params = list(perturbation.parameters())
+
+
+        # Compute 'forward derivative' of loss wrt perturbation params
+        loss_val = self.loss_fxn.forward(perturbation(examples), labels,
+                                         perturbation=perturbation)
+
+    def _compute_parameter_to_modify(self, saliency_map):
+        pass
+
+
+
+    def attack(self, examples, labels, max_iterations=100, step_size=0.01,
+               targets=None):
+        ######################################################################
+        #   Setup boilerplate adversarial attack stuff                       #
+        ######################################################################
+
+        self.classifier_net.eval() # ALWAYS EVAL FOR BUILDING ADV EXAMPLES
+        var_examples = Variable(examples, requires_grad=True)
+        var_labels = Variable(labels, requires_grad=False)
+
+        # Assert that all perturbation lp bounds are L_infty bounded
+        print("TODO")
+
+        perturbation = self.threat_model(examples)
+
+        perturbation.attach_originals(var_examples)
+
+        # Also figure out the number of output classes of the classifier
+        if self.num_classes is None:
+            self.num_classes = self.classifier_net(examples[:1]).shape[1]
+
+        # And set up some targets. If no target specified, we use a random one
+        if targets is None:
+            # Want uniform random over classes except for correct classes
+            unmodified_targets = torch.randint_like(labels, 0,
+                                                    self.num_classes - 1)
+            targets = unmodified_targets + (unmodified_targets >= labels).long()
+
+
+
+        ######################################################################
+        #   Build adversarial examples                                       #
+        ######################################################################
+
+        # Fix the 'reference' images for the loss functiona
+        self.loss_fxn.setup_attack_batch(examples)
+
+
+        for iter_no in range(1, num_iterations + 1):
+
+            # Get saliency map
+            saliency_map = self._get_saliency_map(perturbation, examples,
+                                                  labels, targets)
+
+            # Determine which parameter to modify
+
+            # Modify
+
+            # Zero gradients and repeat until done
+
+            if verbose:
+                self.validation_loop(perturbation(var_examples), var_labels,
+                                     iter_no=iter_no) # MODIFY FOR TARGETS
 
 
