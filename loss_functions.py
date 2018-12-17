@@ -328,7 +328,7 @@ class L2Regularization(ReferenceRegularizer):
     def forward(self, examples, *args, **kwargs):
         l2_dist = img_utils.nchw_l2(examples, self.fix_im,
                                     squared=False).view(-1, 1)
-        #l2_dist = l2_dist / self.fix_im_numel
+        l2_dist = l2_dist / self.fix_im_numel
         return l2_dist.squeeze()
 
 #############################################################################
