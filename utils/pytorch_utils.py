@@ -235,7 +235,8 @@ def random_linf_pertubation(examples_like, l_inf):
         return random_tensor
 
 
-def batchwise_norm(examples, lp, dim=0):
+
+def batchwise_norm(examples, lp, dim=0, eps=0):
     """ Returns the per-example norm of the examples, keeping along the
         specified dimension.
         e.g. if examples is NxCxHxW, applying this fxn with dim=0 will return a
@@ -263,7 +264,7 @@ def batchwise_norm(examples, lp, dim=0):
         examples = torch.pow(examples + 1e-10, lp)
         for reduction in range(1, example_dim):
             examples = examples.sum(1)
-        return torch.pow(examples, 1.0 / lp)
+        return torch.pow(examples + eps, 1.0 / lp)
 
 
 def batchwise_lp_project(x, lp, lp_bound, dim=0):

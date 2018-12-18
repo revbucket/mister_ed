@@ -35,7 +35,7 @@ class NeuralFP(object):
             eps: Size of perturbation. default: 0.1
             manual_gpu: Use gpu or not. If not specified, will use gpu if available.
         FingerPrint:
-            fp_target: num_classes x num_perturb x num_class Tensor: Every element
+            fp_target: num_dx x num_class x num_class Tensor: Every element
                        of the first axis has the same value
             fp_dx: num_dx * 1 * Channel * Width * Height numpy array: Contains
                    fingerprints for different perturbed directions
@@ -54,7 +54,7 @@ class NeuralFP(object):
             self.use_gpu = utils.use_gpu()
 
         self.num_dx = num_dx
-        self.num_class = num_class
+        self.num_class = num_class # always 10 lol
 
         fp_dx, fp_target = self._build_fingerprints(num_dx, num_class, eps,
                                                     log_dir)
@@ -68,31 +68,22 @@ class NeuralFP(object):
         #   Build Fingerprints based on dataset                              #
         ######################################################################
 
-        if self.dataset_name == "mnist":
+        shape = {'mnist': (1, 1, 28, 28),
+                 'cifar': (1, 3, 32, 32)}[self.dataset_name]
+        right_targ = {'mnist': 0.7,
+                      'cifar': 0.6}[self.dataset_name]
+        self.right_targ = right_targ
 
-            # WHY DON'T WE SUBTRACT HALF HERE?
-            fp_dx = [np.random.rand(1, 1, 28, 28) * eps for _ in range(num_dx)]
+        wrong_targ = {'mnist': -0.2357,
+                      'cifar': -0.254}[self.dataset_name]
+        self.wrong_targ = wrong_targ
 
-            fp_target = -0.2357 * np.ones((num_class, num_dx, num_class))
-            for j in range(num_dx):
-                for i in range(num_class):
-                    fp_target[i, j, i] = 0.7
-
-        elif self.dataset_name == "cifar":
-            fp_dx = ([(np.random.rand(1, 3, 32, 32) - 0.5) * 2 * eps
-                       for _ in range(num_dx)])
-
-            # num_target_classes x num_perturb x num_class
-            fp_target = -0.254 * np.ones((num_class, num_dx, num_class))
-
-            for j in range(num_dx):
-                for i in range(num_class):
-                    fp_target[i, j, i] = 0.6
-            fp_target = 1.5 * fp_target
-            fp_target = utils.np2var(fp_target, self.use_gpu)
-
-        else:
-            raise Exception("Unknown dataset %s" % self.dataset_name)
+        fp_dx = [(np.random.rand(*shape) - 0.5) * 2 * eps
+                 for _ in range(num_dx)]
+        fp_target = np.ones((num_dx, num_class, num_class)) * wrong_targ
+        for i in range(num_dx):
+            for j in range(num_class):
+                fp_target[i, j, j] = right_targ
 
 
         ######################################################################
@@ -104,20 +95,21 @@ class NeuralFP(object):
         fp_targ_save = os.path.join(log_dir,
                                     'fp_%s_outputs.pkl' % self.dataset_name)
 
-        pickle.dump(fp_dx.cpu().numpy(), open(fp_dx_save, 'wb'))
-        pickle.dump(fp_target.cpu().numpy(), open(fp_targ_save, 'wb'))
+        pickle.dump(fp_dx, open(fp_dx_save, 'wb'))
+        pickle.dump(fp_target, open(fp_targ_save, 'wb'))
 
         self.fp_dx = fp_dx  # numpy array
         self.fp_target = fp_target  # torch variable
+        return self.fp_dx, self.fp_target
 
 
-    def _compute_fingerprint_loss(self, inputs, original_outputs,
+    def _compute_fingerprint_loss(self, inputs, labels, original_outputs,
                                   normalizer, fp_dx, fp_target):
 
         # First get the original outputs into the right form
-        og_output_norm = utils.batchwise_norm(original_outputs, 2, dim=0)
-        og_direction = original_outputs / (og_output_norm + 1e-10)
-
+        og_output_norm = utils.batchwise_norm(original_outputs, 2, dim=0,
+                                              eps=1e-10)
+        og_direction = original_outputs / (og_output_norm + 1e-10).unsqueeze(1)
         # Next thing: compute the input + dx for each dx in fp_dx
         fingerprint_xs = [inputs + fingerprint for fingerprint in fp_dx]
 
@@ -125,22 +117,28 @@ class NeuralFP(object):
         capital_fs = []
         for x_plus_dx in fingerprint_xs:
             fp_out = self.classifier_net(normalizer(x_plus_dx))
-            fp_norms = utils.batchwise_norm(fp_out, 2, dim=0)
-            fp_direction = fp_out / (fp_norms + 1e-10)
+            fp_norms = utils.batchwise_norm(fp_out, 2, dim=0, eps=1e-10)
+            fp_direction = fp_out / (fp_norms + 1e-10).unsqueeze(1)
             capital_fs.append(fp_direction - og_direction)
 
+
+        # And compute the Delta_y^{i,k}, which should have shape num_dx x N x C
+        delta_y = self.wrong_targ * torch.ones(self.num_dx,
+                                                *original_outputs.shape)
+        if inputs.is_cuda:
+            delta_y = delta_y.cuda()
+
+        for i, label in enumerate(labels):
+            delta_y[:, i, label] = self.right_targ
+
         # Finally compare to the fingeprint targets and take summed l2 norm
-        total_loss = None
-        for i, capital_f in enumerate(capital_fs):
-            fp_target_i = fp_target[:, i, :]
-            this_loss = (capital_f - fp_target_i).pow(2)
-            for _ in range(1, this_loss.dim()):
-                this_loss =  this_loss.sum(1)
-            if total_loss is None:
-                total_loss = this_loss
-            else:
-                total_loss += this_loss
+        total_loss = 0
+        for fp_idx, capital_f in enumerate(capital_fs):
+            this_loss = (capital_f - delta_y[fp_idx]).pow(2)
+            total_loss += this_loss.sum()
         return total_loss
+
+
 
 
     def train(self, train_loader, test_loader, normalizer, num_epochs,
@@ -176,8 +174,8 @@ class NeuralFP(object):
 
         # restore fingerprints into tensors on right device
         try:
-            fp_dx = [torch.from_numpy(_) for _ in self.fp_dx]
-            fp_target = [torch.from_numpy(_) for _ in self.fp_target]
+            fp_dx = [torch.from_numpy(_).float() for _ in self.fp_dx]
+            fp_target = [torch.from_numpy(_).float() for _ in self.fp_target]
         except:
             pass
 
@@ -219,7 +217,7 @@ class NeuralFP(object):
 
 
                 # Next do the fingerprint loss
-                fp_loss = self._compute_fingerprint_loss(inputs,
+                fp_loss = self._compute_fingerprint_loss(inputs, labels,
                                                          original_outputs,
                                                          normalizer, fp_dx,
                                                          fp_target)
@@ -256,6 +254,7 @@ class NeuralFP(object):
                             total += val_labels.size(0)
                             correct += (predicted == val_labels).sum().item()
                     print("The Accuracy is ", 100 * correct / total, "%")
+                    self.classifier_net.train()
 
             # end_of_epoch
             if epoch % verbosity_epoch == 0:
