@@ -588,7 +588,7 @@ class CarliniWagner(AdversarialAttack):
                                    using the perturbation from the previous
                                    binsearch step (but with the new loss)
             stop_early : boolean - if True, we stop after 100 optimizer iterations
-                                   if the loss hasn't gone down too much., 
+                                   if the loss hasn't gone down too much.,
         RETURNS:
             AdversarialPerturbation object with correct parameters.
             Calling perturbation() gets Variable of output and
@@ -666,11 +666,11 @@ class CarliniWagner(AdversarialAttack):
                     print("Optim search: %s, Loss: %s" %
                           (optim_step, loss))
                     self.validation_loop(perturbation(var_examples),
-                                         var_labels, iter_no=optim_step)                    
+                                         var_labels, iter_no=optim_step)
 
                 if (loss_sum + 1e-10 > prev_loss * 0.99999 and
                     optim_step >= 100 and
-                    stop_early):                    
+                    stop_early):
                     if verbose:
                         print(("...stopping early on binary_search_step %02d "
                                " after %03d iterations" ) % (bin_search_step,
