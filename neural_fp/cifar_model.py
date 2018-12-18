@@ -1,0 +1,45 @@
+
+import torch.nn.functional as F
+import torch.nn as nn
+
+class CW2_Net(nn.Module):
+    def __init__(self):
+        super(CW2_Net, self).__init__()
+        self.conv1 = nn.Conv2d(3, 32, 3)
+        self.bnm1 = nn.BatchNorm2d(32, momentum=0.1)
+        self.conv2 = nn.Conv2d(32, 64, 3)
+        self.bnm2 = nn.BatchNorm2d(64, momentum=0.1)
+        self.conv3 = nn.Conv2d(64, 128, 3)
+        self.bnm3 = nn.BatchNorm2d(128, momentum=0.1)
+        self.conv4 = nn.Conv2d(128, 128, 3)
+        self.bnm4 = nn.BatchNorm2d(128, momentum=0.1)
+        self.fc1 = nn.Linear(3200, 256)
+        # self.dropout1 = nn.Dropout(p=0.35, inplace=False)
+        self.bnm5 = nn.BatchNorm1d(256, momentum=0.1)
+        self.fc2 = nn.Linear(256, 256)
+        self.bnm6 = nn.BatchNorm1d(256, momentum=0.1)
+        self.fc3 = nn.Linear(256, 10)
+        # self.dropout2 = nn.Dropout(p=0.35, inplace=False)
+        # self.dropout3 = nn.Dropout(p=0.35, inplace=False)
+
+    def forward(self, x):
+        out = F.relu(self.conv1(x))
+        out = self.bnm1(out)
+        out = F.relu(self.conv2(out))
+        out = self.bnm2(out)
+        out = F.max_pool2d(out, 2)
+        out = F.relu(self.conv3(out))
+        out = self.bnm3(out)
+        out = F.relu(self.conv4(out))
+        out = self.bnm4(out)
+        out = F.max_pool2d(out, 2)
+        out = out.view(out.size(0), -1)
+        # out = self.dropout1(out)
+        out = F.relu(self.fc1(out))
+        # out = self.dropout2(out)
+        out = self.bnm5(out)
+        out = F.relu(self.fc2(out))
+        # out = self.dropout3(out)
+        out = self.bnm6(out)
+        out = self.fc3(out)
+        return (out)
