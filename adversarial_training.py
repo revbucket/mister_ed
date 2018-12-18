@@ -192,55 +192,80 @@ class AdversarialTraining(object):
         self.verbosity_adv = None
         self.verbosity_epoch = None
 
+        self.logger = utils.TrainingLogger()
+        self.log_level = None
+        self.log_minibatch = None
+        self.log_adv = None
+        self.log_epoch = None
 
-    def set_verbosity(self, verbosity):
-        """ Sets the verbosity level for training. Is called in .train method
-            so this method doesn't need to be explicitly called.
+    def reset_logger(self):
+        """ Clears the self.logger instance - useful occasionally """
+        self.logger = utils.TrainingLogger()
+
+
+    def set_verbosity_loglevel(self, level,
+                               verbosity_or_loglevel='verbosity'):
+        """ Sets the verbosity or loglevel for training.
+            Is called in .train method so this method doesn't need to be
+            explicitly called.
 
             Verbosity is mapped from a string to a comparable int 'level'.
-            verbosity_level : int - comparable value of verbosity
-            verbosity_minibatch: int - we do a printout every this many
+            <val>_level : int - comparable value of verbosity
+            <val>_minibatch: int - we do a printout every this many
                                        minibatches
-            verbosity_adv: int - we evaluate the efficacy of our attack every
+            <val>_adv: int - we evaluate the efficacy of our attack every
                                  this many minibatches
-            verbosity_epoch: int - we printout and checkpoint every this many
-                                   epochs
+            <val>_epoch: int - we printout/log and checkpoint every this many
+                               epochs
         ARGS:
-            verbosity : string ['low', 'medium', 'high', 'snoop'],
-                        varying levels of verbosity in increasing order
+            level : string ['low', 'medium', 'high', 'snoop'],
+                        varying levels of verbosity/logging in increasing order
 
         RETURNS: None
         """
-        assert verbosity in ['low', 'medium', 'high', 'snoop']
-        self.verbosity = verbosity
-        self.verbosity_level = {'low': 0,
-                                'medium': 1,
-                                'high': 2,
-                                'snoop': 420}[verbosity]
+        assert level in ['low', 'medium', 'high', 'snoop']
+        assert verbosity_or_loglevel in ['verbosity', 'loglevel']
+        setattr(self, verbosity_or_loglevel, level)
 
-        self.verbosity_minibatch = {'medium': 2000,
-                                    'high': 100,
-                                    'snoop': 1}.get(verbosity)
 
-        self.verbosity_adv = {'medium': 2000,
-                              'high': 100,
-                              'snoop': 1}.get(verbosity)
+        _level = {'low': 0,
+                  'medium': 1,
+                  'high': 2,
+                  'snoop': 420}[level]
+        setattr(self, verbosity_or_loglevel + '_level', _level)
 
-        self.verbosity_epoch = {'low': 100,
-                                'medium': 10,
-                                'high': 1,
-                                'snoop': 1}.get(verbosity)
+
+        _minibatch = {'medium': 2000,
+                      'high': 100,
+                      'snoop': 1}.get(level)
+        setattr(self, verbosity_or_loglevel + '_minibatch', _minibatch)
+
+
+        _adv = {'medium': 2000,
+                'high': 100,
+                'snoop': 1}.get(level)
+        setattr(self, verbosity_or_loglevel + '_adv', _minibatch)
+
+
+        _epoch = {'low': 100,
+                  'medium': 10,
+                  'high': 1,
+                  'snoop': 1}.get(level)
+        setattr(self, verbosity_or_loglevel + '_epoch', _epoch)
+
+
 
 
     def _attack_subroutine(self, attack_parameters, inputs, labels,
-                           epoch_num, minibatch_num, adv_saver):
+                           epoch_num, minibatch_num, adv_saver,
+                           logger):
         """ Subroutine to run the specified attack on a minibatch and append
             the results to inputs/labels.
 
         NOTE: THIS DOES NOT MUTATE inputs/labels !!!!
 
         ARGS:
-            attack_parameters:  AdversarialAttackParameters[] (or None) -
+            attack_parameters:  {k: AdversarialAttackParameters} (or None) -
                                 if not None, contains info on how to do adv
                                 attacks. If None, we don't train adversarially
             inputs : Tensor (NxCxHxW) - minibatch of data we build adversarial
@@ -253,6 +278,8 @@ class AdversarialTraining(object):
             adv_saver : None or checkpoints.CustomDataSaver -
                         if not None, we save the adversarial images for later
                         use, else we don't save them.
+            logger : utils.TrainingLogger instance -  logger instance to keep
+                     track of logging data if we need data for this instance
         RETURNS:
             (inputs, labels, adv_inputs, coupled_inputs)
             where inputs = <arg inputs> ++ adv_inputs
@@ -266,18 +293,29 @@ class AdversarialTraining(object):
             return inputs, labels, None, None
 
 
-        assert isinstance(attack_parameters, list)
+        assert isinstance(attack_parameters, dict)
 
         adv_inputs_total, adv_labels_total, coupled_inputs = [], [], []
-        for param in attack_parameters:
+        for (key, param) in attack_parameters.items():
             adv_data = param.attack(inputs, labels)
             adv_inputs, adv_labels, adv_idxs, og_adv_inputs, _ = adv_data
 
-            if (self.verbosity_level >= 1 and
-                minibatch_num % self.verbosity_adv == self.verbosity_adv - 1):
+
+            needs_print = (self.verbosity_level >= 1 and
+                   minibatch_num % self.verbosity_adv == self.verbosity_adv - 1)
+            needs_log = (self.loglevel_level >= 1 and
+                     minibatch_num % self.loglevel_adv == self.loglevel_adv - 1)
+
+            if needs_print or needs_log:
                 accuracy = param.eval(inputs, adv_inputs, labels, adv_idxs)
+
+            if needs_print:
                 print('[%d, %5d] accuracy: (%.3f, %.3f)' %
                   (epoch_num, minibatch_num + 1, accuracy[1], accuracy[0]))
+
+            if needs_log:
+                logger.log(key, epoch_num, minibatch_num + 1,
+                           (accuracy[1], accuracy[0]))
 
             if adv_saver is not None: # Save the adversarial examples
                 adv_saver.save_minibatch(adv_inputs, adv_labels)
@@ -294,7 +332,8 @@ class AdversarialTraining(object):
 
     def train(self, data_loader, num_epochs, train_loss,
               optimizer=None, attack_parameters=None,
-              verbosity='medium', starting_epoch=0, adversarial_save_dir=None,
+              verbosity='medium', loglevel='medium', logger=None,
+              starting_epoch=0, adversarial_save_dir=None,
               regularize_adv_scale=None):
         """ Modifies the NN weights of self.classifier_net by training with
             the specified parameters s
@@ -308,12 +347,17 @@ class AdversarialTraining(object):
                        decent default params. Pass this in as an actual argument
                        to do anything different
             attack_parameters:  AdversarialAttackParameters obj | None |
-                                AdversarialAttackParameters[] -
-                                if not None, is either an object or list of
-                                objects containing info on how to do adv
-                                attacks. If None, we don't train adversarially
+                                {key: AdversarialAttackParameters} -
+                                if not None, is either an object or dict of
+                                objects containing names and info on how to do
+                                adv attacks. If None, we don't train
+                                adversarially
             verbosity : string - must be 'low', 'medium', 'high', which
                         describes how much to print
+            loglevel : string - must be 'low', 'medium', 'high', which
+                        describes how much to log
+            logger : if not None, is a utils.TrainingLogger instance. Otherwise
+                     we use this instance's self.logger object to log
             starting_epoch : int - which epoch number we start on. Is useful
                              for correct labeling of checkpoints and figuring
                              out how many epochs we actually need to run for
@@ -340,12 +384,12 @@ class AdversarialTraining(object):
         assert isinstance(num_epochs, int)
 
         if attack_parameters is not None:
-            if not isinstance(attack_parameters, list):
-                attack_parameters = [attack_parameters]
+            if not isinstance(attack_parameters, dict):
+                attack_parameters = {'attack': attack_parameters}
 
 
             # assert that the adv attacker uses the NN that's being trained
-            for param in attack_parameters:
+            for param in attack_parameters.values():
                 assert (param.adv_attack_obj.classifier_net ==
                         self.classifier_net)
 
@@ -354,15 +398,33 @@ class AdversarialTraining(object):
         if self.use_gpu:
             self.classifier_net.cuda()
         if attack_parameters is not None:
-            for param in attack_parameters:
+            for param in attack_parameters.values():
                 param.set_gpu(self.use_gpu)
 
         # Verbosity parameters
         assert verbosity in ['low', 'medium', 'high', 'snoop', None]
-        self.set_verbosity(verbosity)
+        self.set_verbosity_loglevel(verbosity,
+                                    verbosity_or_loglevel='verbosity')
         verbosity_level = self.verbosity_level
         verbosity_minibatch = self.verbosity_minibatch
         verbosity_epoch = self.verbosity_epoch
+
+        # Loglevel parameters and logger initialization
+        assert loglevel in ['low', 'medium', 'high', 'snoop', None]
+        if logger is None:
+            logger = self.logger
+        if logger.data_count() > 0:
+            print("WARNING: LOGGER IS NOT EMPTY! BE CAREFUL!")
+        logger.add_series('training_loss')        
+        for key in (attack_parameters or {}).keys():
+            logger.add_series(key)
+
+        self.set_verbosity_loglevel(loglevel, verbosity_or_loglevel='loglevel')
+        loglevel_level = self.loglevel_level
+        loglevel_minibatch = self.loglevel_minibatch
+        loglevel_epoch = self.loglevel_epoch
+
+
 
         # Adversarial image saver:
         adv_saver = None
@@ -383,19 +445,20 @@ class AdversarialTraining(object):
         ######################################################################
 
         for epoch in range(starting_epoch + 1, num_epochs + 1):
-            running_loss = 0.0
+            running_loss_print, running_loss_print_mb = 0.0, 0
+            running_loss_log, running_loss_log_mb = 0.0, 0
             for i, data in enumerate(data_loader, 0):
                 inputs, labels = data
                 if self.use_gpu:
                     inputs = inputs.cuda()
                     labels = labels.cuda()
-
+                    
 
                 # Build adversarial examples
                 attack_out = self._attack_subroutine(attack_parameters,
                                                      inputs, labels,
-                                                     epoch, i,
-                                                     adv_saver)
+                                                     epoch, i, adv_saver,
+                                                     logger)
                 inputs, labels, adv_examples, adv_inputs = attack_out
                 # Now proceed with standard training
                 self.normalizer.differentiable_call()
@@ -420,12 +483,26 @@ class AdversarialTraining(object):
                 optimizer.step()
 
                 # print things
-                running_loss += float(loss.data)
+
+                running_loss_print += float(loss.data)
+                running_loss_print_mb +=1
                 if (verbosity_level >= 1 and
                     i % verbosity_minibatch == verbosity_minibatch - 1):
                     print('[%d, %5d] loss: %.6f' %
-                          (epoch, i + 1, running_loss / 2000))
-                    running_loss = 0.0
+                          (epoch, i + 1, running_loss_print /
+                                 float(running_loss_print_mb)))
+                    running_loss_print = 0.0
+                    running_loss_print_mb = 0
+
+                # log things
+                running_loss_log += float(loss.data)
+                running_loss_log_mb += 1
+                if (loglevel_level >= 1 and                    
+                    i % loglevel_minibatch == loglevel_minibatch - 1):
+                    logger.log('training_loss', epoch, i + 1,
+                               running_loss_log / float(running_loss_log_mb))
+                    running_loss_log = 0.0
+                    running_loss_log_mb = 0
 
             # end_of_epoch
             if epoch % verbosity_epoch == 0:
@@ -439,7 +516,7 @@ class AdversarialTraining(object):
         if verbosity_level >= 1:
             print('Finished Training')
 
-        return
+        return logger
 
 
     def train_from_checkpoint(self, data_loader, num_epochs, loss_fxn,

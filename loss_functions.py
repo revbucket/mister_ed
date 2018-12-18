@@ -8,8 +8,10 @@ import spatial_transformers as st
 from torch.autograd import Variable
 from functools import partial
 import adversarial_perturbations as ap
+import torch.nn.functional as F
 
 """ Loss function building blocks """
+
 
 ##############################################################################
 #                                                                            #
@@ -20,6 +22,7 @@ import adversarial_perturbations as ap
 class RegularizedLoss(object):
     """ Wrapper for multiple PartialLoss objects where we combine with
         regularization constants """
+
     def __init__(self, losses, scalars, negate=False):
         """
         ARGS:
@@ -46,9 +49,9 @@ class RegularizedLoss(object):
 
             loss_val = loss.forward(examples, labels, *args, **kwargs)
             # assert scalar is either a...
-            assert (isinstance(scalar, float) or # number
-                    scalar.numel() == 1 or # tf wrapping of a number
-                    scalar.shape == loss_val.shape) # same as the loss_val
+            assert (isinstance(scalar, float) or  # number
+                    scalar.numel() == 1 or  # tf wrapping of a number
+                    scalar.shape == loss_val.shape)  # same as the loss_val
 
             addendum = loss_val * scalar
             if addendum.numel() > 1:
@@ -64,7 +67,6 @@ class RegularizedLoss(object):
         else:
             return output
 
-
     def setup_attack_batch(self, fix_im):
         """ Setup before calling loss on a new minibatch. Ensures the correct
             fix_im for reference regularizers and that all grads are zeroed
@@ -77,7 +79,6 @@ class RegularizedLoss(object):
                 loss.setup_attack_batch(fix_im)
             else:
                 loss.zero_grad()
-
 
     def cleanup_attack_batch(self):
         """ Does some cleanup stuff after we finish on a minibatch:
@@ -96,15 +97,14 @@ class RegularizedLoss(object):
             if not isinstance(scalar, Number):
                 self.scalars[key] = None
 
-
     def zero_grad(self):
         for loss in self.losses.values():
-            loss.zero_grad() # probably zeros the same net more than once...
-
+            loss.zero_grad()  # probably zeros the same net more than once...
 
 
 class PartialLoss(object):
     """ Partially applied loss object. Has forward and zero_grad methods """
+
     def __init__(self):
         self.nets = []
 
@@ -161,7 +161,6 @@ class IncorrectIndicator(PartialLoss):
             return incorrect_indicator
 
 
-
 ##############################################################################
 #                                   Standard XEntropy Loss                   #
 ##############################################################################
@@ -196,6 +195,7 @@ class PartialXentropy(PartialLoss):
         criterion = nn.CrossEntropyLoss(**xentropy_init_kwargs)
         return criterion(self.classifier.forward(normed_examples), labels)
 
+
 ##############################################################################
 #                           Carlini Wagner loss functions                    #
 ##############################################################################
@@ -207,7 +207,6 @@ class CWLossF6(PartialLoss):
         self.normalizer = normalizer
         self.nets.append(self.classifier)
         self.kappa = kappa
-
 
     def forward(self, examples, labels, *args, **kwargs):
         classifier_in = self.normalizer.forward(examples)
@@ -224,7 +223,6 @@ class CWLossF6(PartialLoss):
         targets_ne_max = top_argmax.squeeze().ne(labels).float().view(-1, 1)
         max_other = targets_eq_max * second_max + targets_ne_max * top_max
 
-
         if kwargs.get('targeted', False):
             # in targeted case, want to make target most likely
             f6 = torch.clamp(max_other - target_logits, min=-1 * self.kappa)
@@ -233,9 +231,6 @@ class CWLossF6(PartialLoss):
             f6 = torch.clamp(target_logits - max_other, min=-1 * self.kappa)
 
         return f6.squeeze()
-
-
-
 
 
 ##############################################################################
@@ -254,6 +249,7 @@ class CWLossF6(PartialLoss):
         https://discuss.pytorch.org/t/cuda-memory-not-being-freed/15965
 """
 
+
 class ReferenceRegularizer(PartialLoss):
     def __init__(self, fix_im):
         super(ReferenceRegularizer, self).__init__()
@@ -268,7 +264,6 @@ class ReferenceRegularizer(PartialLoss):
         """
         self.fix_im = fix_im
         self.zero_grad()
-
 
     def cleanup_attack_batch(self):
         """ Cleanup function to clear the fixed images after an attack batch
@@ -289,13 +284,14 @@ class SoftLInfRegularization(ReferenceRegularizer):
         see page 10 of this paper (https://arxiv.org/pdf/1608.04644.pdf)
         for discussion on why we want SOFT l inf
     '''
+
     def __init__(self, fix_im, **kwargs):
         super(SoftLInfRegularization, self).__init__(fix_im)
 
     def forward(self, examples, *args, **kwargs):
         # ARGS should have one element, which serves as the tau value
 
-        tau =  8.0 / 255.0  # starts at 1 each time?
+        tau = 8.0 / 255.0  # starts at 1 each time?
         scale_factor = 0.9
         l_inf_dist = float(torch.max(torch.abs(examples - self.fix_im)))
         '''
@@ -308,7 +304,6 @@ class SoftLInfRegularization(ReferenceRegularizer):
                                        min=0.0)
         batchwise = utils.batchwise_norm(delta_minus_taus, 'inf', dim=0)
         return batchwise.squeeze()
-
 
 
 #############################################################################
@@ -324,6 +319,7 @@ class L2Regularization(ReferenceRegularizer):
         l2_dist = img_utils.nchw_l2(examples, self.fix_im,
                                     squared=True).view(-1, 1)
         return l2_dist.squeeze()
+
 
 #############################################################################
 #                         LPIPS PERCEPTUAL REGULARIZATION                   #
@@ -348,7 +344,6 @@ class LpipsRegularization(ReferenceRegularizer):
                                                       self.fix_im)
 
         return perceptual_loss.squeeze()
-
 
 
 ##############################################################################
@@ -378,7 +373,6 @@ class FullSpatialLpLoss(PartialLoss):
         st_obj = kwargs['spatial']
         assert isinstance(st_obj, st.FullSpatial)
 
-
         # First create the identity map and make same type as examples
         identity_map = Variable(st_obj.identity_params(examples.shape))
         if examples.is_cuda:
@@ -387,7 +381,7 @@ class FullSpatialLpLoss(PartialLoss):
         # Then take diffs and take lp norms
         diffs = st_obj.grid_params - identity_map
         lp_norm = utils.batchwise_norm(diffs, self.lp, dim=0)
-        return lp_norm # return Nx1 variable, will sum in parent class
+        return lp_norm  # return Nx1 variable, will sum in parent class
 
 
 class PerturbationNormLoss(PartialLoss):
@@ -398,7 +392,6 @@ class PerturbationNormLoss(PartialLoss):
         lp = kwargs.get('lp', 2)
         assert lp in [1, 2, 'inf']
         self.lp = lp
-
 
     def forward(self, examples, *args, **kwargs):
         """ Computes perturbation norm and multiplies by scale
@@ -413,8 +406,6 @@ class PerturbationNormLoss(PartialLoss):
         return perturbation.perturbation_norm(lp_style=self.lp)
 
 
-
-
 ##############################################################################
 #                                                                            #
 #                       Combined Transformer Loss                            #
@@ -427,10 +418,9 @@ class CombinedTransformerLoss(ReferenceRegularizer):
     where X is the original image, and Y is the 'adversarial' input image.
     """
 
-
     def __init__(self, fix_im, transform_class=None,
                  regularization_constant=1.0,
-                 transformation_loss=partial(utils.summed_lp_norm,lp=2),
+                 transformation_loss=partial(utils.summed_lp_norm, lp=2),
                  transform_norm_kwargs=None):
         """ Takes in a reference fix im and a class of transformations we need
             to search over to compute forward.
@@ -442,11 +432,9 @@ class CombinedTransformerLoss(ReferenceRegularizer):
         self.transform_norm_kwargs = transform_norm_kwargs or {}
         self.transformer = None
 
-
     def cleanup_attack_batch(self):
         super(CombinedTransformerLoss, self).cleanup_attack_batch()
         self.transformer = None
-
 
     def _inner_loss(self, examples):
         """ Computes the combined loss for a particular transformation """
@@ -456,7 +444,6 @@ class CombinedTransformerLoss(ReferenceRegularizer):
 
         trans_norm = self.transformer.norm(**self.transform_norm_kwargs)
         return trans_loss + trans_norm * self.regularization_constant
-
 
     def forward(self, examples, *args, **kwargs):
         """ Computes the distance between examples and args
@@ -471,7 +458,6 @@ class CombinedTransformerLoss(ReferenceRegularizer):
         #   Setup transformer + optimizer                                    #
         ######################################################################
         self.transformer = self.transform_class(shape=examples.shape)
-
 
         optim_kwargs = kwargs.get('xform_loss_optim_kwargs', {})
         optim_type = kwargs.get('xform_loss_optim_type', torch.optim.Adam)
@@ -491,7 +477,6 @@ class CombinedTransformerLoss(ReferenceRegularizer):
         return self._inner_loss(examples)
 
 
-
 class RelaxedTransformerLoss(ReferenceRegularizer):
     """  Relaxed version of transformer loss: assumes that the adversarial
          examples are of the form Y=S(X) + delta for some S in the
@@ -505,8 +490,8 @@ class RelaxedTransformerLoss(ReferenceRegularizer):
 
     def __init__(self, fix_im,
                  regularization_constant=1.0,
-                 transformation_loss=partial(utils.summed_lp_norm,lp=2),
-                 transform_norm_kwargs=None):
+                 transformation_loss=partial(utils.summed_lp_norm, lp=2),
+                 transform_norm_kwargs=None, manual_gpu=None):
         """ Takes in a reference fix im and a class of transformations we need
             to search over to compute forward.
         """
@@ -514,7 +499,6 @@ class RelaxedTransformerLoss(ReferenceRegularizer):
         self.regularization_constant = regularization_constant
         self.transformation_loss = transformation_loss
         self.transform_norm_kwargs = transform_norm_kwargs or {}
-
 
     def forward(self, examples, *args, **kwargs):
         """ Computes the distance between examples and args
@@ -529,7 +513,7 @@ class RelaxedTransformerLoss(ReferenceRegularizer):
         transformer = kwargs['transformer']
         assert isinstance(transformer, st.ParameterizedTransformation)
 
-        transformer_norm = self.regularization_constant *\
+        transformer_norm = self.regularization_constant * \
                            transformer.norm(**self.transform_norm_kwargs)
 
         # Collect transformation loss
@@ -539,11 +523,108 @@ class RelaxedTransformerLoss(ReferenceRegularizer):
         return transformation_loss + transformer_norm
 
 
+class NFLoss(PartialLoss):
+    """ Implement Neural Fingerprinting Loss function. Especially, we add a
+        regularization to cluster the perturbed logits to a specific region
+        defined by fingerprint y
+        see https://arxiv.org/abs/1803.03870 for detials
+    """
 
+    def __init__(self, classifier, num_dx, num_class, fp_dx, fp_target, normalizer=None, manual_gpu=None):
+        """ARGS: TBD"""
+        super(NFLoss, self).__init__()
+        self.classifier = classifier
+        self.normalizer = normalizer
+        self.num_dx = num_dx
+        self.num_class = num_class
+        self.fp_dx = fp_dx
+        self.fp_target = fp_target
 
+        if manual_gpu is not None:
+            self.use_gpu = manual_gpu
+        else:
+            self.use_gpu = utils.use_gpu()
 
+    def forward(self, examples, labels, *args, **kwargs ):
+        """Return Neural Fingerprinting Regularized Loss
+        ARGS:
+            TODO: What to do with the examples variable. Actually it is not needed but all attacks pass an examples into
+                  the function.
+            examples: Variable (NxCxHxW) - should be same shape as
+                      ctx.fix_im, is the examples we define loss for.
+                      SHOULD BE IN [0.0, 1.0] RANGE
+            debug: Set the verbosity level
+        RETURNS:
+            loss value of each example
+        """
 
+        # real batch size. Currently Only Support Batch Size 1
+        assert examples.size(0) is 1
+        debug = False
 
+        # examples = torch.unsqueeze(examples, dim=0)
+        # print(examples.shape)
 
+        # Compute original logits
+        if self.normalizer is not None:
+            examples = self.normalizer.forward(examples)
 
+        logits = self.classifier.forward(examples)
+        log_yhat = F.log_softmax(logits, dim=1)
+        yhat = F.softmax(logits, dim=1)
+        y_class = yhat.data.max(1, keepdim=True)[1]
+        # y_class = utils.t2np(y_class, self.use_gpu)[0, 0]
 
+        # Compute FingerPrint Logits
+
+        # fixed_dxs : num_perturb x C x W x H
+        fixed_dxs = self.fp_dx
+
+        # compute x + dx : broadcast! num_perturb x C x W x H
+        xp = examples + fixed_dxs
+
+        logits_p = self.classifier.forward(xp)
+        log_yhat_p = F.log_softmax(logits_p, dim=1)
+        yhat_p = F.softmax(logits_p, dim=1)
+
+        if debug:
+            print("logits_p", logits_p, "log_yhat_p", log_yhat_p)
+            print("yhat_p", yhat_p)
+
+        # Get finger print delta y
+        # num_target_class * num_perturb * num_class
+        fixed_dys = self.fp_target
+
+        # Get Normalized Logits
+        logits_norm = logits * torch.norm(logits, 2, 1, keepdim=True).reciprocal().expand(1, self.num_class)
+        logits_p_norm = logits_p * torch.norm(logits_p, 2, 1, keepdim=True).reciprocal().expand(self.num_dx,
+                                                                                                self.num_class)
+        if debug:
+            print("logits_norm", logits_norm)
+            print("logits_p_norm", logits_p_norm.size(), torch.norm(logits_p_norm, 2, 1))
+
+        diff_logits_p = logits_p_norm - logits_norm
+        diff = fixed_dys - diff_logits_p  # Broadcast! Compute the distance to all labels's dy
+
+        if debug:
+            print("diff_logits_p", diff_logits_p)
+            print("fixed_dys", fixed_dys)
+            print("diff", diff)
+
+        diff_norm = torch.norm(diff, 2, dim=2)
+
+        if debug:
+            print("diff_norm (over dim 2 of diff)", diff_norm)
+
+        diff_norm = torch.mean(diff_norm, dim=1)
+
+        if debug:
+            print("diff_norm after mean", diff_norm)
+
+        y_class_with_fp = diff_norm.data.min(0, keepdim=True)[1]
+        # y_class_with_fp = utils.t2np(y_class_with_fp, self.use_gpu)[0]
+
+        if debug:
+            print("y_class_with_fp", y_class_with_fp, diff_norm.data.min(0, keepdim=True))
+
+        return diff_norm.data.min(0, keepdim=True)[0]

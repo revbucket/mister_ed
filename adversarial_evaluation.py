@@ -14,6 +14,7 @@
 from __future__ import print_function
 import torch
 from torch.autograd import Variable
+import torch.nn as nn
 import utils.pytorch_utils as utils
 import utils.image_utils as img_utils
 import custom_lpips.custom_dist_model as dm
@@ -239,8 +240,18 @@ class EvaluationResult(object):
 class IdentityEvaluation(EvaluationResult):
     """ Subclass of evaluation result that just computes top1 accuracy for the
         ground truths (attack perturbation is the identity)
+    Constructor) ARGS:
+    classifier_net : nn.module - standard argument, is just the nn to eval
+    normalizer : DifferentiableNormalize - standard normalizing argument
+    manual_gpu : boolean - if not None, is the boolean we specify to use
+                 the gpu or not
+    loss_fxn : None or nn.module - if not None is a loss function that takes
+               in arguments of the shape (NxC), (N), where the second arg has
+               integer values in 0 <= val <= C - 1. See nn.CrossEntropyLoss()
+               as an example signature
     """
-    def __init__(self, classifier_net, normalizer, manual_gpu=False):
+    def __init__(self, classifier_net, normalizer, manual_gpu=None,
+                 loss_fxn=None):
         self.classifier_net = classifier_net
         self.normalizer = normalizer
         if manual_gpu is not None:
@@ -248,23 +259,32 @@ class IdentityEvaluation(EvaluationResult):
         else:
             self.use_gpu = utils.use_gpu()
 
-        self.results = {'top1': utils.AverageMeter()}
+        self.loss_fxn = loss_fxn or nn.CrossEntropyLoss()
+        self.results = {'top1': utils.AverageMeter(),
+                        'avg_loss_value': utils.AverageMeter()}
+
+
 
     def set_gpu(self, use_gpu):
         pass
 
     def eval(self, examples, labels):
-        assert list(self.results.keys()) == ['top1']
-        ground_avg = self.results['top1']
+        assert list(self.results.keys()) == ['top1', 'avg_loss_value']
+
         ground_output = self.classifier_net(self.normalizer(Variable(examples)))
         minibatch = float(examples.shape[0])
 
-        ground_accuracy_int = utils.accuracy_int(ground_output,
+        # Compute accuracy
+        ground_avg = self.results['top1']
+        minibatch_accuracy_int = utils.accuracy_int(ground_output,
                                                 Variable(labels), topk=1)
-        ground_avg.update(ground_accuracy_int / minibatch,
+        ground_avg.update(minibatch_accuracy_int / minibatch,
                           n=int(minibatch))
 
-
+        # Compute loss
+        ground_avg_loss = self.results['avg_loss_value']
+        minibatch_loss = float(self.loss_fxn(ground_output, labels))
+        ground_avg_loss.update(minibatch_loss, n=(int(minibatch)))
 
 
 
