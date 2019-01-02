@@ -232,6 +232,11 @@ class EvaluationResult(object):
         perturbation_obj = attack_out[4]
         result.append(perturbation_obj)
 
+    def switch_model(self, new_classifier, new_normalizer=None):
+        new_params = self.attack_params(new_classifier,
+                                        new_normalizer=new_normalizer)
+        return self.__class__(new_params, to_eval=self.to_eval,
+                              manual_gpu=self.use_gpu)
 
 
 
@@ -286,6 +291,15 @@ class IdentityEvaluation(EvaluationResult):
         ground_avg_loss.update(minibatch_loss, n=(int(minibatch)))
 
 
+    def switch_model(self, new_classifier, new_normalizer=None):
+        if new_normalizer is None:
+            new_normalizer = self.normalizer
+        return self.__class__(new_classifier, new_normalizer,
+                              manual_gpu=self.use_gpu,
+                              loss_fxn=self.loss_fxn)
+
+
+
 
 ############################################################################
 #                                                                          #
@@ -304,6 +318,12 @@ class AdversarialEvaluation(object):
             self.use_gpu = manual_gpu
         else:
             self.use_gpu = utils.use_gpu()
+
+    def switch_model(self, new_classifier, new_normalizer=None):
+        if new_normalizer is None:
+            new_normalizer = self.normalizer
+        return self.__class__(new_classifier, new_normalizer,
+                              manual_gpu=self.use_gpu)
 
 
     def evaluate_ensemble(self, data_loader, attack_ensemble,
@@ -502,5 +522,7 @@ class AdversarialEvaluation(object):
         return utils.checkpoint_incremental_array(output_file,
                                                   minibatch_attacks,
                                                   return_concat=True)[0]
+
+
 
 

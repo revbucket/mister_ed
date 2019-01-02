@@ -534,6 +534,15 @@ def rough_gpu_estimate():
     else:
         return {k: sizeof_fmt(v) for k, v in cuda_count.items()}
 
+def copy_numerical(numerical):
+    """ Takes in a float, int, or Tensor and returns a deep copy of it """
+
+    if isinstance(numerical, (float, int)):
+        return numerical
+    else:
+        assert isinstance(numerical, torch.Tensor)
+        return numerical.clone().detach()
+
 
 
 ##############################################################################

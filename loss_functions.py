@@ -47,7 +47,7 @@ class RegularizedLoss(object):
 
             loss_val = loss.forward(examples, labels, *args, **kwargs)
             # assert scalar is either a...
-            assert (isinstance(scalar, float) or # number
+            assert (isinstance(scalar, (float, int)) or # number
                     scalar.numel() == 1 or # tf wrapping of a number
                     scalar.shape == loss_val.shape) # same as the loss_val
 
@@ -102,6 +102,28 @@ class RegularizedLoss(object):
         for loss in self.losses.values():
             loss.zero_grad() # probably zeros the same net more than once...
 
+    def switch_model(self, new_classifier, new_normalizer=None):
+        """ Builds a new loss object that is a copy of this one, but uses
+            new PartialLoss objects
+        ARGS:
+            new_classifier : nn.Module subclass - neural net that is the
+                             classifier we're attacking
+            new_normalizer : DifferentiableNormalize object or None - object to
+                             convert input data to mean-zero, unit-var examples
+                             (if None, same normalizer is kept)
+        RETURNS:
+            RegularizedLoss like this one, but with a new classifier attached
+            where necessary
+        """
+
+        new_losses = {k: v.switch_model(new_classifier, new_normalizer)
+                      for k, v in self.losses.items()}
+
+        new_scalars = {k: utils.copy_numerical(v) for k,v in
+                       self.scalars.items}
+        new_negate = self.negate
+
+        return self.__class__(new_losses, new_scalars, negate=new_negate)
 
 
 class PartialLoss(object):
@@ -112,6 +134,10 @@ class PartialLoss(object):
     def zero_grad(self):
         for net in self.nets:
             net.zero_grad()
+
+    def switch_model(self, new_classifier, new_normalizer):
+        pass
+
 
 
 ##############################################################################
@@ -161,6 +187,11 @@ class IncorrectIndicator(PartialLoss):
         else:
             return incorrect_indicator
 
+    def switch_model(self, new_classifier, new_normalizer=None):
+        if new_normalizer is None:
+            new_normalizer = self.normalizer
+        return self.__class__(new_classifier, normalizer=new_normalizer)
+
 
 
 ##############################################################################
@@ -196,6 +227,12 @@ class PartialXentropy(PartialLoss):
             xentropy_init_kwargs['reduction'] = 'none'
         criterion = nn.CrossEntropyLoss(**xentropy_init_kwargs)
         return criterion(self.classifier.forward(normed_examples), labels)
+
+
+    def switch_model(self, new_classifier, new_normalizer=None):
+        if new_normalizer is None:
+            new_normalizer = self.normalizer
+        return self.__class__(new_classifier, normalizer=new_normalizer)
 
 ##############################################################################
 #                           Carlini Wagner loss functions                    #
@@ -234,6 +271,13 @@ class CWLossF6(PartialLoss):
             f6 = torch.clamp(target_logits - max_other, min=-1 * self.kappa)
 
         return f6.squeeze()
+
+    def switch_model(self, new_classifier, new_normalizer=None):
+        if new_normalizer is None:
+            new_normalizer = self.normalizer
+
+        return self.__class__(new_classifier, normalizer=new_normalizer,
+                              kappa=self.kappa)
 
 
 
@@ -281,6 +325,9 @@ class ReferenceRegularizer(PartialLoss):
         self.fix_im_numel = None
         del old_fix_im
         self.zero_grad()
+
+    def switch_model(self, new_classifier, new_normalizer=None):
+        return self.__class__(self.fix_im)
 
 
 #############################################################################

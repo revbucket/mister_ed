@@ -136,6 +136,19 @@ class AdversarialAttackParameters(object):
         return self.adv_attack_obj.eval_attack_only(adv_inputs, labels,
                                                     topk=topk)
 
+    def switch_model(self, new_classifier, new_normalizer=None):
+        """ Builds a new AdversarialAttackParameters object with a new model but
+            everything else the same
+        ARGS:
+            new_model : nn.Module subclass - neural
+        RETURNS:
+            AdversarialAttackParameters instance with this new model
+        """
+        new_attack_obj = self.adv_attack_obj.switch_model(new_classifier,
+                                                  new_normalizer=new_normalizer)
+        return AdversarialAttackParameters(new_attack_obj,
+                             proportion_attacked=self.proportion_attacked,
+                             attack_specific_params=self.attack_specific_params)
 
 
 
@@ -415,7 +428,7 @@ class AdversarialTraining(object):
             logger = self.logger
         if logger.data_count() > 0:
             print("WARNING: LOGGER IS NOT EMPTY! BE CAREFUL!")
-        logger.add_series('training_loss')        
+        logger.add_series('training_loss')
         for key in (attack_parameters or {}).keys():
             logger.add_series(key)
 
@@ -452,7 +465,7 @@ class AdversarialTraining(object):
                 if self.use_gpu:
                     inputs = inputs.cuda()
                     labels = labels.cuda()
-                    
+
 
                 # Build adversarial examples
                 attack_out = self._attack_subroutine(attack_parameters,
@@ -497,7 +510,7 @@ class AdversarialTraining(object):
                 # log things
                 running_loss_log += float(loss.data)
                 running_loss_log_mb += 1
-                if (loglevel_level >= 1 and                    
+                if (loglevel_level >= 1 and
                     i % loglevel_minibatch == loglevel_minibatch - 1):
                     logger.log('training_loss', epoch, i + 1,
                                running_loss_log / float(running_loss_log_mb))

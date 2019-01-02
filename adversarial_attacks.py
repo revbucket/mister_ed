@@ -159,6 +159,38 @@ class AdversarialAttack(object):
 
         print(print_str)
 
+    def switch_model(self, new_classifier, new_normalizer=None):
+        """ Builds a new attack object with a new classifier net in place of
+            this one
+        ARGS:
+            new_classifier : nn.Module subclass - neural net that is the
+                             classifier we're attacking
+            new_normalizer : DifferentiableNormalize object or None - object to
+                             convert input data to mean-zero, unit-var examples
+                             (if None, same normalizer is kept)
+        RETURNS:
+            AdversarialAttack of the same class, just with a new classifier_net
+        """
+        if new_normalizer is None:
+            new_normalizer = self.normalizer
+
+        if isinstance(self, (FGSM, PGD, SPSA)):
+            new_loss = self.loss_fxn.switch_model(new_classifier,
+                                                  new_normalizer)
+            return self.__class__(new_classifier, new_normalizer,
+                                  self.threat_model, new_loss,
+                                  manual_gpu=self.use_gpu)
+        elif isinstance(self, CarliniWagner):
+            return self.__class__(new_classifier, new_normalizer,
+                                  self.threat_model,
+                                  self.loss_classes['distance_fxn'],
+                                  self.loss_classes['carlini_loss'],
+                                  manual_gpu=self.use_gpu)
+        else:
+            raise NotImplementedError("Not implemented yet! Sorry!")
+
+
+
 
 
 
@@ -918,6 +950,7 @@ class JSMA(AdversarialAttack):
 
     def __init__(self, classifier_net, normalizer, threat_model, loss_fxn,
                  manual_gpu=None):
+        raise NotImplementedError("Not yet implemented!")
         super(JSMA, self).__init__(classifier_net, normalizer, threat_model,
                                    manual_gpu=manual_gpu)
         self.loss_fxn = loss_fxn
