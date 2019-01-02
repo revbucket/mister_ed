@@ -82,8 +82,8 @@ class EvaluationResult(object):
     def _get_successful_attacks(self, attack_out):
         ''' Gets the (successful, corresponding-original) attacks '''
         perturbation = attack_out[4]
-        return perturbation.collect_successful(self.classifier_net,
-                                               self.normalizer)
+        return perturbation.collect_successful(self.attack_params.adv_attack_obj.classifier_net,
+                                               self.attack_params.adv_attack_obj.normalizer)
 
 
 
@@ -216,8 +216,7 @@ class EvaluationResult(object):
         count = attack_out[0].shape[0]
         result.update(loss_val_sum, n=count)
 
-    def stash_perturbations(self, eval_label, attack_out, ground_examples,
-                            labels):
+    def stash_perturbations(self, eval_label, attack_out):
         """ This will store the perturbations.
            (TODO: make these tensors and store on CPU)
         """
