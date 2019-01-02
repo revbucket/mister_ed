@@ -82,11 +82,9 @@ class EvaluationResult(object):
     def _get_successful_attacks(self, attack_out):
         ''' Gets the (successful, corresponding-original) attacks '''
         perturbation = attack_out[4]
-        return perturbation.collect_successful(self.attack_params.adv_attack_obj.classifier_net,
-                                               self.attack_params.adv_attack_obj.normalizer)
-
-
-
+        successful = perturbation.collect_successful(self.classifier_net,
+                                                     self.normalizer)
+        return successful['adversarials'], successful['originals']
 
     def top1_accuracy(self, eval_label, attack_out):
 

@@ -431,6 +431,7 @@ def fold_mask(x, y, mask):
 
     return output
 
+<<<<<<< HEAD
 def scale_tensor_list(tensor_list, scale_factor):
     """ Takes in a list of tensor-like objects and returns the scaled version
         of each. Does not mutate the list!
@@ -490,6 +491,41 @@ def tensor_list_op(tensor_list_1, tensor_list_2, op):
     return [op(tensor_a, tensor_b) for tensor_a, tensor_b in
                                     zip(tensor_list_1, tensor_list_2)]
 
+=======
+def scatter_expand(originals, scatter_size, mask, identity_el=None):
+    """ Takes original tensor into larger size
+    ARGS:
+        originals : tensor of size NxCxHxW
+        scatter_size : int - the number of examples the scattering maps into
+        mask: int[] - list of indices that each index of self maps into.
+                      Should be sorted and unique
+    RETURNS:
+        tensor of shape scatter_size x CxHxW
+    """
+
+    original_shape = originals.shape
+    num_examples = original_shape[0]
+    assert scatter_size > num_examples
+    assert len(mask) == num_examples
+    assert all(isinstance(_, int) for _ in mask)
+    assert sorted(set(mask)) == mask # sorted + unique
+    mask_set = set(mask)
+    # TODO: probably a way faster way to do this with some matmul stuff
+    if identity_el is None:
+        identity_el = torch.zeros(*original_shape[1:])
+        if originals.is_cuda:
+            identity_el = identity_el.cuda()
+
+    stacked = []
+    next_original_idx = 0
+    for i in range(scatter_size):
+        if i in mask_set:
+            stacked.append(originals[next_original_idx])
+            next_original_idx += 1
+        else:
+            stacked.append(identity_el)
+    return torch.stack(stacked)
+>>>>>>> attack_bundling
 
 
 ###############################################################################
@@ -562,7 +598,7 @@ def accuracy_int(output, target, topk=1):
     return int(correct.data.sum())
 
 
-def accuracy(output, target, topk=(1,)):
+def accuracy(output, target, topk=(1,), return_correct_idxs=False):
     """Computes the precision@k for the specified values of k"""
     maxk = max(topk)
     batch_size = target.size(0)
@@ -575,7 +611,15 @@ def accuracy(output, target, topk=(1,)):
     for k in topk:
         correct_k = correct[:k].view(-1).float().sum(0)
         res.append(correct_k.mul_(100.0 / batch_size))
-    return res
+
+    if return_correct_idxs:
+        correct_bytes = correct.sum(dim=0)
+        correct_idxs = [i for i in range(len(correct_bytes))
+                        if correct_bytes[i] > 0]
+
+        return res, correct_idxs
+    else:
+        return res
 
 
 

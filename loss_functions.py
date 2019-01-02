@@ -37,6 +37,17 @@ class RegularizedLoss(object):
         self.scalars = scalars
         self.negate = negate
 
+    def __call__(self, inputs, labels, *args, **kwargs):
+        if isinstance(inputs, ap.AdversarialPerturbation):
+            return self.perturbation_forward(inputs, labels, *args, **kwargs)
+        else:
+            return self.forward(inputs, labels, *args, **kwargs)
+
+    def perturbation_forward(self, perturbation, labels, *args, **kwargs):
+        """ Takes in a perturbaiton instead of examples """
+        return self.forward(perturbation.adversarial_tensors(),
+                            labels, *args, **kwargs)
+
     def forward(self, examples, labels, *args, **kwargs):
 
         output = None
