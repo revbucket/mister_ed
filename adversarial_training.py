@@ -267,7 +267,8 @@ class AdversarialTraining(object):
         setattr(self, verbosity_or_loglevel + '_epoch', _epoch)
 
 
-
+    def _get_regularize_adv_criterion(self):
+        return nn.L1Loss()
 
     def _attack_subroutine(self, attack_parameters, inputs, labels,
                            epoch_num, minibatch_num, adv_saver,
@@ -326,7 +327,7 @@ class AdversarialTraining(object):
                 print('[%d, %5d] accuracy: (%.3f, %.3f)' %
                   (epoch_num, minibatch_num + 1, accuracy[1], accuracy[0]))
 
-            if needs_log:
+            if needs_log and logger is not None:
                 logger.log(key, epoch_num, minibatch_num + 1,
                            (accuracy[1], accuracy[0]))
 
@@ -343,11 +344,66 @@ class AdversarialTraining(object):
         return inputs, labels, torch.cat(adv_inputs_total, dim=0), coupled
 
 
+    def _minibatch_loss(self, inputs, labels, train_loss, attack_parameters,
+                        epoch, minibatch_no, adv_saver, regularize_adv_scale,
+                        regularize_adv_criterion, logger):
+        """ Subroutine to compute the loss for a single minibatch """
+
+        # Build adversarial examples
+        attack_out = self._attack_subroutine(attack_parameters,
+                                             inputs, labels,
+                                             epoch, minibatch_no, adv_saver,
+                                             logger)
+        inputs, labels, adv_examples, adv_inputs = attack_out
+        # Now proceed with standard training
+        self.normalizer.differentiable_call()
+        self.classifier_net.train()
+        inputs, labels = Variable(inputs), Variable(labels)
+
+        # forward step
+        outputs = self.classifier_net.forward(self.normalizer(inputs))
+        loss = train_loss.forward(outputs, labels)
+
+        if regularize_adv_scale is not None:
+            # BE SURE TO 'DETACH' THE ADV_INPUTS!!!
+            reg_adv_loss = regularize_adv_criterion(adv_examples,
+                                              Variable(adv_inputs.data))
+            print(float(loss), regularize_adv_scale * float(reg_adv_loss))
+            loss = loss + regularize_adv_scale * reg_adv_loss
+
+        return loss
+
+
+    def _cross_validate(self, test_loader, train_loss, attack_parameters, epoch,
+                        regularize_adv_scale, regularize_adv_criterion):
+        """ Performs cross-validation and returns the average/minibatch test
+            loss
+        """
+        test_loss = 0
+        test_minibatches = 0.0
+        for i, data in enumerate(test_set):
+            inputs, labels = data
+            if self.use_gpu:
+                inputs = inputs.cuda()
+                labels = labels.cuda()
+            mb_loss = self._minibatch_loss(inputs, labels, train_loss,
+                                           attack_parameters,
+                                           epoch, i, None,
+                                           regularize_adv_scale,
+                                           regularize_adv_criterion,
+                                           logger)
+            test_loss += float(mb_loss.data)
+            test_minibatches += 1.0
+
+        return test_loss / test_minibatches
+
+
     def train(self, data_loader, num_epochs, train_loss,
               optimizer=None, attack_parameters=None,
               verbosity='medium', loglevel='medium', logger=None,
               starting_epoch=0, adversarial_save_dir=None,
-              regularize_adv_scale=None):
+              regularize_adv_scale=None, test_percentage=0.1,
+              best_test_loss=None):
         """ Modifies the NN weights of self.classifier_net by training with
             the specified parameters s
         ARGS:
@@ -384,6 +440,12 @@ class AdversarialTraining(object):
                                    scale constant of that loss
             stdout_prints: bool - if True we print out using stdout so we don't
                                   spam logs like crazy
+            test_percentage: float - value between [0.0, 1.0] for how much of
+                             the train set should be reserved as a test set for
+                             each epoch. This is randomly selected at each epoch
+            best_test_loss : float - for when restarting from checkpoint, this
+                             stores the best loss on a test set, so we know
+                             which the best model in future epochs is
 
         RETURNS:
             None, but modifies the classifier_net's weights
@@ -450,53 +512,47 @@ class AdversarialTraining(object):
                                             lr=0.001)
 
         # setup regularize adv object
+        regularize_adv_criterion = None
         if regularize_adv_scale is not None:
-            regularize_adv_criterion = nn.L1Loss()
+            regularize_adv_criterion = self._get_regularize_adv_criterion()
+
+        # Setup best test loss
+        if best_test_loss is None:
+            best_test_loss = float('inf')
 
         ######################################################################
         #   Training loop                                                    #
         ######################################################################
 
         for epoch in range(starting_epoch + 1, num_epochs + 1):
+            # Build train/test sets
+            if test_percentage > 0:
+                train_loader, test_loader = utils.split_training_data(
+                                                                data_loader,
+                                                                test_percentage)
+                logger.add_series('test_loss')
+            else:
+                train_loader = data_loader
+
             running_loss_print, running_loss_print_mb = 0.0, 0
             running_loss_log, running_loss_log_mb = 0.0, 0
-            for i, data in enumerate(data_loader, 0):
+            for i, data in enumerate(train_loader):
                 inputs, labels = data
                 if self.use_gpu:
                     inputs = inputs.cuda()
                     labels = labels.cuda()
 
-
-                # Build adversarial examples
-                attack_out = self._attack_subroutine(attack_parameters,
-                                                     inputs, labels,
-                                                     epoch, i, adv_saver,
-                                                     logger)
-                inputs, labels, adv_examples, adv_inputs = attack_out
-                # Now proceed with standard training
-                self.normalizer.differentiable_call()
-                self.classifier_net.train()
-                inputs, labels = Variable(inputs), Variable(labels)
                 optimizer.zero_grad()
-
-                # forward step
-                outputs = self.classifier_net.forward(self.normalizer(inputs))
-                loss = train_loss.forward(outputs, labels)
-
-                if regularize_adv_scale is not None:
-                    # BE SURE TO 'DETACH' THE ADV_INPUTS!!!
-                    reg_adv_loss = regularize_adv_criterion(adv_examples,
-                                                      Variable(adv_inputs.data))
-                    print(float(loss), regularize_adv_scale * float(reg_adv_loss))
-                    loss = loss + regularize_adv_scale * reg_adv_loss
-
-
-                # backward step
+                loss = self._minibatch_loss(inputs, labels, train_loss,
+                                            attack_parameters,
+                                            epoch, i, adv_saver,
+                                            regularize_adv_scale,
+                                            regularize_adv_criterion,
+                                            logger)
                 loss.backward()
                 optimizer.step()
 
                 # print things
-
                 running_loss_print += float(loss.data)
                 running_loss_print_mb +=1
                 if (verbosity_level >= 1 and
@@ -517,7 +573,30 @@ class AdversarialTraining(object):
                     running_loss_log = 0.0
                     running_loss_log_mb = 0
 
-            # end_of_epoch
+            # end_of_epoch: Do validation on reserved test set and save best
+            if test_percentage > 0:
+                test_loss = self._cross_validate(test_loader, train_loss,
+                                                 attack_parameters, epoch,
+                                                 regularize_adv_scale,
+                                                 regularize_adv_criterion)
+                # Print test loss
+                if (verbosity_level >= 1):
+                    print('TEST: [%d] loss: %.6f' % (epoch, test_loss))
+
+
+                # Log test loss
+                if (loglevel_level >= 1):
+                    logger.log('test_loss', epoch, 0, test_loss)
+
+                # Save best model
+                if test_loss <= best_test_loss:
+                   best_test_loss = test_loss
+                   checkpoints.save_state_dict(self.experiment_name,
+                                               self.architecture_name,
+                                               'best', self.classifier_net,
+                                               k_highest=None)
+
+
             if epoch % verbosity_epoch == 0:
                 print("COMPLETED EPOCH %04d... checkpointing here" % epoch)
                 checkpoints.save_state_dict(self.experiment_name,
@@ -536,7 +615,9 @@ class AdversarialTraining(object):
                               optimizer=None, attack_parameters=None,
                               verbosity='medium',
                               starting_epoch='max',
-                              adversarial_save_dir=None):
+                              adversarial_save_dir=None,
+                              regularize_adv_scale=None,
+                              test_percentage=0.1):
         """ Resumes training from a saved checkpoint with the same architecture.
             i.e. loads weights from specified checkpoint, figures out which
                  epoch we checkpointed on and then continues training until
@@ -546,6 +627,8 @@ class AdversarialTraining(object):
             starting_epoch: 'max' or int - which epoch we start training from.
                              'max' means the highest epoch we can find,
                              an int means a specified int epoch exactly.
+                             'best' means we load the best-test loss model
+
         RETURNS:
             None
         """
@@ -559,16 +642,70 @@ class AdversarialTraining(object):
         assert valid_epochs != []
         if starting_epoch == 'max':
             epoch = max(valid_epochs)
+        elif starting_epoch == 'best':
+            epoch = 'best'
         else:
             assert starting_epoch in valid_epochs
             epoch = starting_epoch
 
         # modify the classifer to use these weights
-
         self.classifier_net = checkpoints.load_state_dict(self.experiment_name,
                                                          self.architecture_name,
                                                          epoch,
                                                          self.classifier_net)
+
+        ######################################################################
+        #   Compute the best test loss value for use in restart              #
+        ######################################################################
+
+        best_test_loss = None
+        if test_percentage > 0:
+            _, test_loader = utils.split_training_data(data_loader,
+                                                       test_percentage)
+            if regularize_adv_scale is not None:
+                regularize_adv_criterion = self._get_regularize_adv_criterion()
+            try:
+                best_net = checkpoints.load_state_dict(self.experiment_name,
+                                                       self.architecture_name,
+                                                       'best',
+                                                       self.classifier_net)
+                best_net_computer = AdversarialTraining(best_net,
+                                                        self.normalizer,
+                                                        experiment_name,
+                                                        architecture_name)
+                best_net_computer.set_verbosity_loglevel('low', 'verbosity')
+                best_net_computer.set_verbosity_loglevel('low', 'loglevel')
+                test_loss_best = best_net_computer._cross_validate(test_loader,
+                                                              loss_fxn,
+                                                              attack_parameters,
+                                                        0, regularize_adv_scale,
+                                                       regularize_adv_criterion)
+            except:
+                print("NO SAVED BEST AVAILABLE")
+                test_loss_best = float('inf')
+
+            if epoch != 'best':
+                loaded_net = checkpoints.load_state_dict(
+                                                   self.experiment_name,
+                                                   self.architecture_name,
+                                                   epoch,
+                                                   self.classifier_net)
+                loaded_net_computer = AdversarialTraining(loaded_net,
+                                                          self.normalizer,
+                                                          experiment_name,
+                                                          architecture_name)
+                loaded_net_computer.set_verbosity_loglevel('low', 'verbosity')
+                loaded_net_computer.set_verbosity_loglevel('low', 'loglevel')
+                test_loss_loaded = best_net_computer._cross_validate(
+                                                          test_loader, loss_fxn,
+                                                          attack_parameters,
+                                                    0, regularize_adv_scale,
+                                                   regularize_adv_criterion)
+            else:
+                test_loss_loaded = float('inf')
+            best_test_loss = min([test_loss_best, test_loss_loaded])
+
+
 
         ######################################################################
         #   Training block                                                   #
@@ -579,7 +716,11 @@ class AdversarialTraining(object):
                    attack_parameters=attack_parameters,
                    verbosity=verbosity,
                    starting_epoch=epoch,
-                   adversarial_save_dir=adversarial_save_dir)
+                   adversarial_save_dir=adversarial_save_dir,
+                   regularize_adv_scale=regularize_adv_scale,
+                   test_percentage=test_percentage,
+                   best_test_loss=best_test_loss)
+
 
 
 

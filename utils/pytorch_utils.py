@@ -431,7 +431,6 @@ def fold_mask(x, y, mask):
 
     return output
 
-<<<<<<< HEAD
 def scale_tensor_list(tensor_list, scale_factor):
     """ Takes in a list of tensor-like objects and returns the scaled version
         of each. Does not mutate the list!
@@ -491,7 +490,6 @@ def tensor_list_op(tensor_list_1, tensor_list_2, op):
     return [op(tensor_a, tensor_b) for tensor_a, tensor_b in
                                     zip(tensor_list_1, tensor_list_2)]
 
-=======
 def scatter_expand(originals, scatter_size, mask, identity_el=None):
     """ Takes original tensor into larger size
     ARGS:
@@ -525,7 +523,6 @@ def scatter_expand(originals, scatter_size, mask, identity_el=None):
         else:
             stacked.append(identity_el)
     return torch.stack(stacked)
->>>>>>> attack_bundling
 
 
 ###############################################################################
@@ -705,7 +702,7 @@ class DifferentiableNormalize(Function):
 
 ##############################################################################
 #                                                                            #
-#                       TRAINING LOGGER                                      #
+#                       TRAINING UTILITIES                                   #
 #                                                                            #
 ##############################################################################
 
@@ -779,6 +776,48 @@ class TrainingLogger(object):
             value : <unspecified, but preferably float> - value we're logging
         """
         self.log_datapoint(name, ((epoch, minibatch), value))
+
+
+def split_training_data(data_loader, test_percentage):
+    """ Takes a data loader and randomly partitions into a training and
+        test set. Used for cross-validation in training
+    ARGS:
+        data_loader: torch.utils.data.DataLoader object
+        test_percentage: float - value between [0.0, 1.0] for how big the
+                         the test set should be (e.g., for 10% of the data
+                         reserved for the test set, this should be 0.10)
+                         [there might be a little bit of mismatch due to
+                          minibatch sizes]
+    RETURNS:
+        [train_dataloader, test_dataloader]: list of two dataloaders with the
+        train data loader first
+    """
+    assert 0 <= test_percentage <= 1.0
+    dataset = data_loader.dataset
+    dataset_size = len(dataset) # in number of examples
+    test_size = int(test_percentage * dataset_size)
+    train_size = dataset_size - test_size
+
+    subsets = torch.utils.data.random_split(dataset, [train_size, test_size])
+
+    # Hacky way to carry over constructor args for datasets
+    # copied from DataLoader source:
+    # https://pytorch.org/docs/0.4.1/_modules/torch/utils/data/dataloader.html#DataLoader
+    basic_attrs = ['batch_size',
+                   'num_workers',
+                   'collate_fn',
+                   'pin_memory',
+                   'drop_last',
+                   'timeout',
+                   'worker_init_fn']
+
+    kwargs = {k: getattr(data_loader, k) for k in basic_attrs}
+
+    # infer shuffle kwarg (though it's usually True)
+    kwargs['shuffle'] = isinstance(data_loader.sampler,
+                                   torch.utils.data.sampler.RandomSampler)
+
+    return [torch.utils.data.DataLoader(subset, **kwargs) for subset in subsets]
 
 
 
