@@ -38,6 +38,7 @@ class AttackBundle(aa.AdversarialAttack):
             assert isinstance(v, advtrain.AdversarialAttackParameters)
             assert v.adv_attack_obj.threat_model == threat_model #need eq method
             assert v.proportion_attacked == 1.0
+        self.threat_model = threat_model
         self.bundled_attacks = bundled_attacks
         self.set_goal(goal, goal_params)
 
@@ -243,7 +244,8 @@ class AttackBundle(aa.AdversarialAttack):
             global_try_idxs.append(try_idx)
         global_try_idxs = global_try_idxs[::-1]
 
-
+        
+        
         # Expand each perturbation into GLOBAL size (can skip first one tho!)
         scattered_perturbations = [] # first tries ALL
         for i, (pert, mask) in enumerate(zip(perturbations, global_try_idxs)):
@@ -257,15 +259,16 @@ class AttackBundle(aa.AdversarialAttack):
 
         # Merge perturbations together using success idxs
 
-        running_perturbation = scattered_perturbations[0]
-        for i, scatter_pert in enumerate(scattered_perturbations[1:], start=1):
-            mask = torch.LongTensor(num_examples).fill_(0)
-            mask.index_fill_(0, torch.LongTensor(global_success_idxs[i - 1]), 1)
-            if examples.is_cuda:
-                mask = mask.cuda()
-            running_perturbation = running_perturbation.merge_perturbation(
-                                                             scatter_pert, mask)
 
+        running_perturbation = self.threat_model(examples) 
+        for i, scatter_pert in enumerate(scattered_perturbations):
+            mask = torch.LongTensor(num_examples).fill_(0)
+            if len(global_success_idxs[i]) == 0:
+                continue 
+            mask.index_fill_(0, torch.LongTensor(global_success_idxs[i]), 1)
+            
+            running_perturbation = running_perturbation.merge_perturbation(scatter_pert, 
+                                                                   1-mask)
         # Attach the originals to initialize the final perturbation
         running_perturbation.attach_originals(examples)
         return running_perturbation

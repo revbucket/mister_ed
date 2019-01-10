@@ -41,8 +41,8 @@ def list_saved_epochs(experiment_name, architecture):
     """ Returns a list of int epochs we've checkpointed for this
         experiment name and architecture
     """
-
-    extract_epoch = lambda f: int(f.split('.')[-3])
+    safe_int_cast = lambda s: int(s) if s.isdigit() else s
+    extract_epoch = lambda f: safe_int_cast(f.split('.')[-2])
     filename_list = params_to_filename(experiment_name, architecture)
     return [extract_epoch(f) for f in filename_list]
 
@@ -85,21 +85,25 @@ def params_to_filename(experiment_name, architecture, epoch_val=None):
     select_epoch = lambda f: safe_int_cast(re.sub(re_prefix, '',
                                            re.sub(re_suffix, '', f)))
     valid_epoch = lambda e: ((e == 'best') or
-                             (int(e) >= (epoch_val or (0, 0))[0] and
-                              int(e) <= (epoch_val or (0, float('inf')))[1]))
+                             (e >= (epoch_val or (0, 0))[0] and
+                              e <= (epoch_val or (0, float('inf')))[1]))
 
     filename_epoch_pairs  = []
+    best_filename = []
     for full_path in glob.glob(glob_prefix):
         filename = os.path.basename(full_path)
         if not valid_name(filename):
             continue
-
         epoch = select_epoch(filename)
         if valid_epoch(epoch):
-            filename_epoch_pairs.append((filename, epoch))
+            if epoch != 'best':
+                filename_epoch_pairs.append((filename, epoch))
+            else:
+                best_filename.append(filename)
 
 
-    return [_[0] for _ in sorted(filename_epoch_pairs, key=lambda el: el[1])]
+    return best_filename +\
+           [_[0] for _ in sorted(filename_epoch_pairs, key=lambda el: el[1])]
 
 
 
@@ -122,7 +126,10 @@ def save_state_dict(experiment_name, architecture, epoch_val, model,
     this_filename = params_to_filename(experiment_name, architecture, epoch_val)
 
     # Next clear up memory if too many state dicts
-    current_filenames = params_to_filename(experiment_name, architecture)
+    current_filenames = [_ for _ in
+                         params_to_filename(experiment_name, architecture)
+                         if not _.endswith('.best.path')]
+
     delete_els = []
     if k_highest is not None:
         num_to_delete = len(current_filenames) - k_highest + 1
