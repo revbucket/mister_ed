@@ -341,6 +341,22 @@ class ReferenceRegularizer(PartialLoss):
         return self.__class__(self.fix_im)
 
 
+
+#############################################################################
+#                               ZERO MAP                                    #
+#############################################################################
+
+class ZeroRegularization(ReferenceRegularizer):
+    ''' Hacky scaffolded method to plug in as a distance function for
+        carlini-wagner style attacks when we want to compare efficacy of using
+        a regularizer on accuracy. Is simply the zero-map: (F(x) = 0 for all x)
+    '''
+    def __init__(self, fix_im, **kwargs):
+        super(ZeroRegularization, self).__init__(fix_im)
+
+    def forward(self, examples, *args, **kwargs):
+        return 0
+
 #############################################################################
 #                               SOFT L_INF REGULARIZATION                   #
 #############################################################################

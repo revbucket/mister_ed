@@ -78,11 +78,15 @@ def params_to_filename(experiment_name, architecture, epoch_val=None):
     re_prefix = '%s\.%s\.' % (experiment_name, architecture)
     re_suffix = r'\.path'
 
-    valid_name = lambda f: bool(re.match(re_prefix + r'\d{6}' + re_suffix,f))
-    select_epoch = lambda f: int(re.sub(re_prefix, '',
-                                        re.sub(re_suffix, '', f)))
-    valid_epoch = lambda e: (e >= (epoch_val or (0, 0))[0] and
-                             e <= (epoch_val or (0, float('inf')))[1])
+    valid_name = lambda f: bool(re.match(re_prefix + r'(\d{6}|best)' +
+                                         re_suffix, f))
+
+    safe_int_cast = lambda s: int(s) if s.isdigit() else s
+    select_epoch = lambda f: safe_int_cast(re.sub(re_prefix, '',
+                                           re.sub(re_suffix, '', f)))
+    valid_epoch = lambda e: ((e == 'best') or
+                             (int(e) >= (epoch_val or (0, 0))[0] and
+                              int(e) <= (epoch_val or (0, float('inf')))[1]))
 
     filename_epoch_pairs  = []
     for full_path in glob.glob(glob_prefix):
