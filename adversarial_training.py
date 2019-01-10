@@ -272,11 +272,8 @@ class AdversarialTraining(object):
 
     def _attack_subroutine(self, attack_parameters, inputs, labels,
                            epoch_num, minibatch_num, adv_saver,
-<<<<<<< HEAD
-                           logger, duplicate_originals=True):
-=======
-                           logger, is_xvalidate=False):
->>>>>>> e3291ab3d1a65d6807c76323dfeb4aa25f426316
+                           logger, duplicate_originals=True,
+                           is_xvalidate=False):
         """ Subroutine to run the specified attack on a minibatch and append
             the results to inputs/labels.
 
@@ -298,14 +295,12 @@ class AdversarialTraining(object):
                         use, else we don't save them.
             logger : utils.TrainingLogger instance -  logger instance to keep
                      track of logging data if we need data for this instance
-<<<<<<< HEAD
+
             duplicate_originals: boolean - if True we include one copy of the
                                  originals per adversarial attack, otherwise we
                                  just include one copy total
-=======
             is_xvalidate: boolean - True if called by _cross_validate, is
                           is useful for printing
->>>>>>> e3291ab3d1a65d6807c76323dfeb4aa25f426316
         RETURNS:
             (inputs, labels, adv_inputs, coupled_inputs)
             where inputs = <arg inputs> ++ adv_inputs
@@ -365,12 +360,9 @@ class AdversarialTraining(object):
 
     def _minibatch_loss(self, inputs, labels, train_loss, attack_parameters,
                         epoch, minibatch_no, adv_saver, regularize_adv_scale,
-<<<<<<< HEAD
+
                         regularize_adv_criterion, logger,
-                        duplicate_originals=True):
-=======
-                        regularize_adv_criterion, logger, is_xvalidate=False):
->>>>>>> e3291ab3d1a65d6807c76323dfeb4aa25f426316
+                        is_xvalidate=False, duplicate_originals=True):
         """ Subroutine to compute the loss for a single minibatch """
 
         # Build adversarial examples
@@ -378,11 +370,8 @@ class AdversarialTraining(object):
                                              inputs, labels,
                                              epoch, minibatch_no, adv_saver,
                                              logger,
-<<<<<<< HEAD
-                                        duplicate_originals=duplicate_originals)
-=======
-                                             is_xvalidate=is_xvalidate)
->>>>>>> e3291ab3d1a65d6807c76323dfeb4aa25f426316
+                                        duplicate_originals=duplicate_originals,
+                                        is_xvalidate=is_xvalidate)
         inputs, labels, adv_examples, adv_inputs = attack_out
         # Now proceed with standard training
         self.normalizer.differentiable_call()
@@ -421,12 +410,9 @@ class AdversarialTraining(object):
                                            epoch, i, None,
                                            regularize_adv_scale,
                                            regularize_adv_criterion,
-<<<<<<< HEAD
-                                           logger,
-                                        duplicate_originals=duplicate_originals)
-=======
-                                           None, is_xvalidate=True)
->>>>>>> e3291ab3d1a65d6807c76323dfeb4aa25f426316
+                                           None,
+                                        duplicate_originals=duplicate_originals,
+                                        is_xvalidate=True)
             test_loss += float(mb_loss.data)
             test_minibatches += 1.0
 
@@ -728,15 +714,9 @@ class AdversarialTraining(object):
                                                               loss_fxn,
                                                               attack_parameters,
                                                         0, regularize_adv_scale,
-<<<<<<< HEAD
                                                        regularize_adv_criterion,
                                        duplicate_originals=duplicate_originals)
             except:
-=======
-                                                       regularize_adv_criterion)
-            except Exception as err:
-                print(err)
->>>>>>> e3291ab3d1a65d6807c76323dfeb4aa25f426316
                 print("NO SAVED BEST AVAILABLE")
                 test_loss_best = float('inf')
 
