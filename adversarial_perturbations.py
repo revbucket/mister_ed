@@ -268,7 +268,11 @@ class AdversarialPerturbation(nn.Module):
                  over a larger set
                  This class just returns the scattered
         """
-        assert scatter_size > self.num_examples
+        try:
+            assert scatter_size > self.num_examples
+        except Exception as err:
+            print("ERROR MESSAGE", scatter_size, self.num_examples)
+            raise err
         assert len(mask) == self.num_examples
         assert sorted(set(mask)) == mask # sorted + unique
 
