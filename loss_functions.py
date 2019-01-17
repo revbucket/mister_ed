@@ -355,7 +355,7 @@ class ZeroRegularization(ReferenceRegularizer):
         super(ZeroRegularization, self).__init__(fix_im)
 
     def forward(self, examples, *args, **kwargs):
-        return 0
+        return torch.zeros_like(examples.view(examples.shape[0], -1)).sum(1)
 
 #############################################################################
 #                               SOFT L_INF REGULARIZATION                   #
