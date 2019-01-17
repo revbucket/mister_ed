@@ -87,7 +87,7 @@ def params_to_filename(experiment_name, architecture, epoch_val=None):
     valid_epoch = lambda e: ((e == 'best') or
                              (e >= (epoch_val or (0, 0))[0] and
                               e <= (epoch_val or (0, float('inf')))[1]))
-    
+
     filename_epoch_pairs  = []
     best_filename = []
     for full_path in glob.glob(glob_prefix):
@@ -100,8 +100,8 @@ def params_to_filename(experiment_name, architecture, epoch_val=None):
                 filename_epoch_pairs.append((filename, epoch))
             else:
                 best_filename.append(filename)
-                
-                
+
+
     return best_filename +\
            [_[0] for _ in sorted(filename_epoch_pairs, key=lambda el: el[1])]
 
@@ -129,7 +129,7 @@ def save_state_dict(experiment_name, architecture, epoch_val, model,
     current_filenames = [_ for _ in
                          params_to_filename(experiment_name, architecture)
                          if not _.endswith('.best.path')]
-    
+
     delete_els = []
     if k_highest is not None:
         num_to_delete = len(current_filenames) - k_highest + 1

@@ -6,7 +6,7 @@ import os
 config_path = os.path.abspath(os.path.join(os.path.dirname(__file__),
                                            'config.json'))
 config_dir = os.path.dirname(config_path)
-config_dict = json.loads(open(config_path, 'rb').read())
+config_dict = json.loads(open(config_path, 'rb').read().decode('utf-8'))
 
 def path_resolver(path):
     if path.startswith('~/'):
