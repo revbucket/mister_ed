@@ -377,7 +377,6 @@ class AdversarialTraining(object):
         self.normalizer.differentiable_call()
         self.classifier_net.train()
         inputs, labels = Variable(inputs), Variable(labels)
-
         # forward step
         outputs = self.classifier_net.forward(self.normalizer(inputs))
         loss = train_loss.forward(outputs, labels)
