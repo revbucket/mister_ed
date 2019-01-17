@@ -71,7 +71,8 @@ class AdversarialAttackParameters(object):
              adv_examples: Tensor with shape (N'xCxHxW) [the perturbed outputs]
              pre_adv_labels: Tensor with shape (N') [original labels]
              selected_idxs : Tensor with shape (N') [idxs selected]
-             adv_inputs : Tensor with shape (N') [examples used to make advs]
+             adv_inputs : Tensor with shape (N'xCxHxW)
+                          [examples used to make advs]
              perturbation: Adversarial Perturbation Object
         """
         num_elements = inputs.shape[0]
@@ -318,11 +319,19 @@ class AdversarialTraining(object):
 
         duplicate_count = len(attack_parameters) if duplicate_originals else 1
 
-        adv_inputs_total, adv_labels_total, coupled_inputs = [], [], []
+        adv_examples_total, adv_labels_total, coupled_inputs = [], [], []
         for (key, param) in attack_parameters.items():
             adv_data = param.attack(inputs, labels)
-            adv_inputs, adv_labels, adv_idxs, og_adv_inputs, _ = adv_data
+            adv_examples, adv_labels, adv_idxs, og_adv_inputs, _ = adv_data
 
+            adv_examples_total.append(adv_examples)
+            adv_labels_total.append(adv_labels)
+            coupled_inputs.append(og_adv_inputs)
+
+
+            ################################################################
+            #   Internal evaluations, prints, and logging stuff            #
+            ################################################################
 
             needs_print = (self.verbosity_level >= 1 and
                    minibatch_num % self.verbosity_adv == self.verbosity_adv - 1)
@@ -330,7 +339,7 @@ class AdversarialTraining(object):
                      minibatch_num % self.loglevel_adv == self.loglevel_adv - 1)
 
             if needs_print or needs_log:
-                accuracy = param.eval(inputs, adv_inputs, labels, adv_idxs)
+                accuracy = param.eval(inputs, adv_examples, labels, adv_idxs)
 
             if needs_print:
                 print_str = ('[%d, %5d] accuracy: (%.3f, %.3f)' %
@@ -344,18 +353,46 @@ class AdversarialTraining(object):
                            (accuracy[1], accuracy[0]))
 
             if adv_saver is not None: # Save the adversarial examples
-                adv_saver.save_minibatch(adv_inputs, adv_labels)
+                adv_saver.save_minibatch(adv_examples, adv_labels)
 
-            adv_inputs_total.append(adv_inputs)
-            adv_labels_total.append(adv_labels)
-            coupled_inputs.append(og_adv_inputs)
+            ################################################################
+            #   /Internal evaluations prints                               #
+            ################################################################
 
-        inputs = torch.cat([inputs for _ in range(duplicate_count)]+
-                           [_.data for _ in adv_inputs_total], dim=0)
-        labels = torch.cat([labels for _ in range(duplicate_count)] +
-                           adv_labels_total, dim=0)
-        coupled = torch.cat(coupled_inputs, dim=0)
-        return inputs, labels, torch.cat(adv_inputs_total, dim=0), coupled
+
+        '''
+        The inputs should depend on value of duplicate_originals
+        If duplicate_originals is False:
+            - output[0] should be
+              [original_mb :: adversarial_input_1 :: ... :: adversarial_input_k]
+              and output[1] is
+              [original_label :: adversarial_label_1 :: adversarial_label_k]
+
+
+        If duplicate_originals is True:
+          - output[0] should be
+          [originals_1 :: ... :: originals_k ::
+           atk_1(originals_1) :: ... :: atk_k(originals_k)]
+
+          - output[1] should be
+          [labels_1 :: ... :: labels_k ::
+           labels_1 :: ... :: labels_k]
+
+        Regardless output[2], output[3] are the adversarial_examples and their
+        coupled inputs
+        '''
+        if not duplicate_originals:
+            # inputs should be [original_mb :: adv_input_1 :: ... ::adv_input_k]
+            inputs = torch.cat([inputs] + [_.data for _ in adv_examples_total],
+                               dim=0)
+            labels = torch.cat([labels] + [_.data for _ in adv_labels_total],
+                               dim=0)
+        else:
+            inputs = torch.cat(coupled_inputs + adv_examples_total, dim=0)
+            labels = torch.cat(adv_labels_total + adv_labels_total, dim = 0)
+
+        return inputs, labels, torch.cat(adv_examples_total, dim=0),
+                               torch.cat(coupled_inputs, dim=0)
 
 
     def _minibatch_loss(self, inputs, labels, train_loss, attack_parameters,
@@ -385,7 +422,6 @@ class AdversarialTraining(object):
             # BE SURE TO 'DETACH' THE ADV_INPUTS!!!
             reg_adv_loss = regularize_adv_criterion(adv_examples,
                                               Variable(adv_inputs.data))
-            print(float(loss), regularize_adv_scale * float(reg_adv_loss))
             loss = loss + regularize_adv_scale * reg_adv_loss
 
         return loss
