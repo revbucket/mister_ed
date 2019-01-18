@@ -269,7 +269,7 @@ class AdversarialPerturbation(nn.Module):
                  This class just returns the scattered
         """
         try:
-            assert scatter_size > self.num_examples
+            assert scatter_size >= self.num_examples
         except Exception as err:
             print("ERROR MESSAGE", scatter_size, self.num_examples)
             raise err
