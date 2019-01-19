@@ -391,7 +391,7 @@ class AdversarialTraining(object):
             inputs = torch.cat(coupled_inputs + adv_examples_total, dim=0)
             labels = torch.cat(adv_labels_total + adv_labels_total, dim = 0)
 
-        return inputs, labels, torch.cat(adv_examples_total, dim=0),
+        return inputs, labels, torch.cat(adv_examples_total, dim=0),\
                                torch.cat(coupled_inputs, dim=0)
 
 

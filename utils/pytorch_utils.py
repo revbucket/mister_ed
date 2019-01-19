@@ -525,6 +525,28 @@ def scatter_expand(originals, scatter_size, mask, identity_el=None):
     return torch.stack(stacked)
 
 
+def filter_examples(model, examples, labels, normalizer=None):
+    """ Filters only the examples that are correctly classified.
+    ARGS:
+        model : nn.Module instance - classifier that takes in examples
+        examples : Tensor (NxCxHxW) - tensor of examples to be classified
+        labels : Tensor (N) - long tensor of labels corresponding to examples
+        normalizer : Normalizer - transform for the examples, could be None
+    RETURS:
+        correct_examples (N'xCxHxW), correct_examples (N')
+        Returns only the elements of examples and their corresponding labels if
+        the classifier correctly classifies them (top1)
+    """
+    if normalizer is None:
+        normalizer = IdentityNormalize()
+    output = model(normalizer(examples))
+    top_1 = output.max(1)[1]
+    correct_bytes = (top_1 == labels)
+    if all(correct_bytes):
+        return examples, labels
+    return examples[correct_bytes], labels[correct_bytes]
+
+
 ###############################################################################
 #                                                                             #
 #                               CUDA RELATED THINGS                           #
