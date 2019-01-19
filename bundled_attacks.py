@@ -172,11 +172,10 @@ class AttackBundle(aa.AdversarialAttack):
 
         """
         assert self.goal == 'misclassify' # only misclassify for now
-        if self.goal_params is None:
+        if self.goal_params is not None:
             order = self.goal_params
         else:
             order = self.bundled_attacks.keys()
-
         num_examples = examples.shape[0]
         ######################################################################
         #   Loop through attacks                                             #
@@ -382,7 +381,6 @@ class AttackBundle(aa.AdversarialAttack):
 
     def attack(self, examples, labels, verbose=False):
         """ See docs for subsidiary methods, depending on which goal we have """
-
         if self.goal in ['misclassify']:
             return self.attack_lazy(examples, labels, verbose=verbose)
         elif self.goal in ['max_loss', 'min_perturbation']:

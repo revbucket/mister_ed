@@ -274,8 +274,7 @@ class IdentityEvaluation(EvaluationResult):
         pass
 
     def eval(self, examples, labels):
-        assert sorted(list(self.results.keys())) == sorted(['top1', 'avg_loss_value'])
-
+        assert sorted(list(self.results.keys())) == ['avg_loss_value', 'top1']
         ground_output = self.classifier_net(self.normalizer(Variable(examples)))
         minibatch = float(examples.shape[0])
 
