@@ -694,7 +694,7 @@ class CarliniWagner(AdversarialAttack):
                 torch.autograd.backward(loss_sum)
                 optimizer.step()
 
-                if verbose and optim_step > 0 and optim_step % 25 == 0:
+                if verbose and optim_step > 0 and optim_step % 100 == 0:
                     print("Optim search: %s, Loss: %s" %
                           (optim_step, loss))
                     self.validation_loop(perturbation(var_examples),
@@ -724,8 +724,7 @@ class CarliniWagner(AdversarialAttack):
             bin_search_out = self.classifier_net.forward(self.normalizer(bin_search_perts))
             successful_attack_idxs = self._batch_compare(bin_search_out,
                                                          var_labels)
-
-
+            
             batch_dists = distance_fxn.forward(bin_search_perts).data
 
             successful_dist_idxs = batch_dists < best_results['best_dist']
@@ -754,6 +753,7 @@ class CarliniWagner(AdversarialAttack):
 
 
         # End binary search loop
+        perturbation = best_results['best_perturbation']
         if verbose:
             num_successful = len([_ for _ in best_results['best_dist']
                                   if _ < MAXFLOAT])
