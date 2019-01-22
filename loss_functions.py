@@ -384,15 +384,41 @@ class SoftLInfRegularization(ReferenceRegularizer):
     '''
     def __init__(self, fix_im, **kwargs):
         super(SoftLInfRegularization, self).__init__(fix_im)
+        self.tau = 1.0
 
+    def setup_attack_batch(self, fix_im):
+        super(SoftLInfRegularization, self).setup_attack_batch(fix_im)
+
+        num_examples = fix_im.shape[0]
+        self.tau = torch.ones(num_examples)
+        if fix_im.is_cuda:
+            self.tau = self.tau.cuda()
 
 
     def forward(self, examples, *args, **kwargs):
         # ARGS should have one element, which serves as the tau value
-
-        tau =  8.0 / 255.0  # starts at 1 each time?
+        tolerance = 1e-9
         scale_factor = 0.9
-        l_inf_dist = float(torch.max(torch.abs(examples - self.fix_im)))
+
+        # To compute Relu(abs(delta_i) - Tau)
+        # first put tau in right shape
+        tau = self.tau.view((-1,) + (1,) * (examples.dim() - 1))
+        tau = tau.expand_as(examples)
+
+        # Then Relu(abs(delta_i) - Tau)
+        diff = nn.functional.relu(torch.abs(examples - self.fix_im))
+
+        # and compute example-wise sums
+        diff = diff.sum(tuple(range(1, diff.dim())))
+
+        # And downscale taus by scale factor
+        mask = diff < tolerance
+        tau_updater = torch.ones_like(self.tau)
+        tau_updater[mask] = scale_factor
+        self.tau = self.tau * tau_updater
+
+        return diff
+
         '''
         while scale_factor * tau > l_inf_dist:
             tau *= scale_factor

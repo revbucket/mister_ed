@@ -661,7 +661,7 @@ class ParameterizedXformAdv(AdversarialPerturbation):
         new_perturbation = ParameterizedXformAdv(self.threat_model,
                                                  self.perturbation_params)
         new_perturbation._merge_setup(self.num_examples, self.xform)
-        self_mask = list(self.xform.parameters())[0]((self.num_examples,),
+        self_mask = list(self.xform.parameters())[0].new_ones((self.num_examples,),
                                                       dtype=torch.uint8)
         return self.merge_perturbation(new_perturbation, self_mask)
 
