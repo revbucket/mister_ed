@@ -384,7 +384,6 @@ class SoftLInfRegularization(ReferenceRegularizer):
     '''
     def __init__(self, fix_im, **kwargs):
         super(SoftLInfRegularization, self).__init__(fix_im)
-        self.tau = 1.0
 
     def setup_attack_batch(self, fix_im):
         super(SoftLInfRegularization, self).setup_attack_batch(fix_im)
