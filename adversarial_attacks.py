@@ -384,7 +384,7 @@ class PGD(AdversarialAttack):
 
             loss = -1 * loss
             torch.autograd.backward(loss.sum())
-
+            # print("ITER_NO %02d: %s" % (iter_no, loss.sum()))
             if signed:
                 perturbation.update_params(update_fxn)
             else:
@@ -475,7 +475,8 @@ class CarliniWagner(AdversarialAttack):
                                             threat_model, manual_gpu=manual_gpu)
 
 
-        assert issubclass(distance_fxn, lf.ReferenceRegularizer)
+        assert (issubclass(distance_fxn, lf.ReferenceRegularizer) or
+                distance_fxn == lf.PerturbationNormLoss)
         assert issubclass(carlini_loss, lf.CWLossF6)
 
         self.loss_classes = {'distance_fxn': distance_fxn,
@@ -673,6 +674,7 @@ class CarliniWagner(AdversarialAttack):
 
 
         for bin_search_step in range(num_bin_search_steps):
+            loss_fxn.setup_attack_batch(var_examples)            
             if warm_start:
                 perturbation = best_results['best_perturbation']\
                                             .clone_perturbation()
@@ -763,6 +765,7 @@ class CarliniWagner(AdversarialAttack):
 
         loss_fxn.cleanup_attack_batch()
         perturbation.attach_originals(examples)
+        perturbation.attach_attr('var_scale', var_scale)
         perturbation.attach_attr('distances', best_results['best_dist'])
 
         return perturbation

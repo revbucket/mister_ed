@@ -344,7 +344,7 @@ class AdversarialPerturbation(nn.Module):
 
     @initialized
     def display(self, scale=5, successful_only=False, classifier_net=None,
-                normalizer=None):
+                normalizer=None, num_to_display=None):
         """ Displays this adversarial perturbation in a 3-row format:
             top row is adversarial images, second row is original images,
             bottom row is difference magnified by scale (default 5)
@@ -367,6 +367,10 @@ class AdversarialPerturbation(nn.Module):
         else:
             advs = self.adversarial_tensors()
             origs = self.originals
+
+        if num_to_display is not None:
+            advs = advs[:num_to_display]
+            origs = origs[:num_to_display]
 
         diffs = torch.clamp((advs - origs) * scale + 0.5, 0, 1)
         img_utils.show_images([advs, origs, diffs])
@@ -636,10 +640,13 @@ class ParameterizedXformAdv(AdversarialPerturbation):
 
         # grad data can either be a tensor of same shape/device as delta
         # OR a singleton list containing a tensor of same shape/device as delta
+        param_list = list(self.xform.parameters())
+        assert len(param_list) == 1
+        params = param_list[0]        
         if isinstance(grad_data, list):
             assert len(grad_data) == 1
             grad_data = grad_data[0]
-        assert grad_data.shape == self.delta.data.shape
+        assert grad_data.shape == params.data.shape
 
         params.data.add_(grad_data)
 
