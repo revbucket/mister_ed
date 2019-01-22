@@ -430,6 +430,16 @@ class SoftLInfRegularization(ReferenceRegularizer):
         return batchwise.squeeze()
 
 
+class HardLInfRegularization(ReferenceRegularizer):
+
+    def __init__(self, fix_im, **kwargs):
+        super(HardLInfRegularization, self).__init__(fix_im)
+
+    def forward(self, examples, *args, **kwargs):
+
+        return utils.batchwise_norm(examples - self.fix_im, 'inf')
+
+
 
 #############################################################################
 #                               L2 REGULARIZATION                           #
