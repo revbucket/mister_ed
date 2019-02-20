@@ -636,10 +636,7 @@ class CarliniWagner(AdversarialAttack):
 
         if targets is not None:
             raise NotImplementedError("Targeted attacks aren't built yet")
-
-        if self.use_gpu:
-            examples = examples.cuda()
-            labels = labels.cuda()
+        examples, labels = self.cudafy(self.use_gpu, (examples, labels))
 
         self.classifier_net.eval() # ALWAYS EVAL FOR BUILDING ADV EXAMPLES
 
@@ -674,7 +671,7 @@ class CarliniWagner(AdversarialAttack):
 
 
         for bin_search_step in range(num_bin_search_steps):
-            loss_fxn.setup_attack_batch(var_examples)            
+            loss_fxn.setup_attack_batch(var_examples)
             if warm_start:
                 perturbation = best_results['best_perturbation']\
                                             .clone_perturbation()
@@ -726,7 +723,7 @@ class CarliniWagner(AdversarialAttack):
             bin_search_out = self.classifier_net.forward(self.normalizer(bin_search_perts))
             successful_attack_idxs = self._batch_compare(bin_search_out,
                                                          var_labels)
-            
+
             batch_dists = distance_fxn.forward(bin_search_perts).data
 
             successful_dist_idxs = batch_dists < best_results['best_dist']

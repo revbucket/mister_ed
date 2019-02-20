@@ -19,6 +19,13 @@ import subprocess
 ###############################################################################
 # aka things for safer pytorch usage
 
+def cudafy(use_gpu, seq):
+    """ If use_gpu is True, returns cuda version of everything in tuple seq"""
+    if use_gpu is False:
+        return tuple(_.cpu() for _ in seq)
+    else:
+        return tuple(_.cuda() for _ in seq)
+
 
 def use_gpu():
     """ The shortcut to retrieve the environment variable 'MISTER_ED_GPU'"""

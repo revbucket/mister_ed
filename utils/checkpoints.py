@@ -247,11 +247,7 @@ class CustomDataLoader(object):
             examples = torch.Tensor(examples)
             labels = torch.Tensor(labels)
 
-        if self.use_gpu:
-            examples = examples.cuda()
-            labels = labels.cuda()
-
-        return (examples, labels)
+        return utils.cudafy(self.use_gpu, (examples, labels))
 
     def _base_loader(self, prefix, which):
         assert which in ['examples', 'labels']

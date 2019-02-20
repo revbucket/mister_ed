@@ -159,6 +159,42 @@ class AdversarialAttackParameters(object):
 #                                                                            #
 ##############################################################################
 
+class TraininingProtocol(object):
+    """ Helper class to get passed in at training. Contains information about
+        how 'adversarial training' is done. There's lots of schools of thoughts
+        on best protocols here, so this just helps keep it clean what exactly
+        we're doing
+    """
+
+    def __init__(self, minibatch_protocol, test_percentage):
+
+        """ Minibatch protocol parameter: string
+        Given an adversarial training with many potential attackParameters, we
+        have three options:
+            adv_only: the loss is computed wrt ONLY the generated adversarial
+                      examples
+            adv_and_orig: the loss is computed wrt ALL the adversarials, but
+                          only one total copy of the originals
+            duplicate_originals: the loss is computed wrt ALL the adversarials,
+                                 and one copy of each original example per
+                                 adversarial (i.e, there'll be duplicated clean
+                                 examples in the minibatch if multiple attack
+                                 styles are provided)
+
+        """
+        assert minibatch_protocol in ['adv_only',
+                                      'adv_and_orig',
+                                      'duplicate_originals']
+        self.minibatch_protocol = minibatch_protocol
+
+        """ Test percentage: float
+            Value between [0.0, 1.0] for how much of
+        """
+        assert 0.0 <= test_percentage < 1.0
+        self.test_percentage = test_percentage
+
+
+
 
 
 class AdversarialTraining(object):
@@ -166,7 +202,7 @@ class AdversarialTraining(object):
     """
 
     def __init__(self, classifier_net, normalizer,
-                 experiment_name, architecture_name,
+                 experiment_name, architecture_name, protocol=None,
                  manual_gpu=None):
 
         """
@@ -211,6 +247,11 @@ class AdversarialTraining(object):
         self.log_minibatch = None
         self.log_adv = None
         self.log_epoch = None
+
+        if self.protocol is None:
+            protocol = TraininingProtocol('adv_and_orig', 0.1)
+        self.protocol = protocol
+
 
     def reset_logger(self):
         """ Clears the self.logger instance - useful occasionally """
@@ -273,8 +314,7 @@ class AdversarialTraining(object):
 
     def _attack_subroutine(self, attack_parameters, inputs, labels,
                            epoch_num, minibatch_num, adv_saver,
-                           logger, duplicate_originals=True,
-                           is_xvalidate=False):
+                           logger, is_xvalidate=False):
         """ Subroutine to run the specified attack on a minibatch and append
             the results to inputs/labels.
 
@@ -314,12 +354,13 @@ class AdversarialTraining(object):
         if attack_parameters is None:
             return inputs, labels, None, None
 
-
         assert isinstance(attack_parameters, dict)
 
-        duplicate_count = len(attack_parameters) if duplicate_originals else 1
-
         adv_examples_total, adv_labels_total, coupled_inputs = [], [], []
+
+        ####################################################################
+        #   Build adversarial examples as per attack_parameter objects     #
+        ####################################################################
         for (key, param) in attack_parameters.items():
             adv_data = param.attack(inputs, labels)
             adv_examples, adv_labels, adv_idxs, og_adv_inputs, _ = adv_data
@@ -358,22 +399,33 @@ class AdversarialTraining(object):
             ################################################################
             #   /Internal evaluations prints                               #
             ################################################################
+        ####################################################################
+        #   End building of adversarial examples                           #
+        ####################################################################
 
+
+        ####################################################################
+        #   Now handle how we want to compute loss, as per protocol        #
+        ####################################################################
 
         '''
-        The inputs should depend on value of duplicate_originals
-        If duplicate_originals is False:
+        The inputs should depend on value of self.protocol.minibatch_protocol
+
+        If minibatch_protocol is "adv_only":
+            - output[0] should be [adversarial_ex1 :: ... :: adversarial_ex_k]
+            - output[1] should be [adversarial_lab1 :: ... :: adversarial_lab_k]
+
+        If minibatch_protocol is "adv_and_orig":
             - output[0] should be
               [original_mb :: adversarial_input_1 :: ... :: adversarial_input_k]
               and output[1] is
               [original_label :: adversarial_label_1 :: adversarial_label_k]
 
 
-        If duplicate_originals is True:
+        If minibatch_protocol is "duplicate_originals":
           - output[0] should be
           [originals_1 :: ... :: originals_k ::
            atk_1(originals_1) :: ... :: atk_k(originals_k)]
-
           - output[1] should be
           [labels_1 :: ... :: labels_k ::
            labels_1 :: ... :: labels_k]
@@ -381,34 +433,40 @@ class AdversarialTraining(object):
         Regardless output[2], output[3] are the adversarial_examples and their
         coupled inputs
         '''
-        if not duplicate_originals:
-            # inputs should be [original_mb :: adv_input_1 :: ... ::adv_input_k]
+        minibatch_protocol = self.protocol.minibatch_protocol
+
+        if minibatch_protocol == 'adv_only':
+            inputs = torch.cat(adv_examples_total, dim=0)
+            labels = torch.cat(adv_labels_total, dim=0)
+
+        elif minibatch_protocol == 'adv_and_orig':
             inputs = torch.cat([inputs] + [_.data for _ in adv_examples_total],
                                dim=0)
             labels = torch.cat([labels] + [_.data for _ in adv_labels_total],
                                dim=0)
-        else:
+
+        elif minibatch_protocol == 'duplicate_originals':
             inputs = torch.cat(coupled_inputs + adv_examples_total, dim=0)
             labels = torch.cat(adv_labels_total + adv_labels_total, dim = 0)
+        else:
+            raise NotImplementedError("Unknown protocol argument: %s" %
+                                      minibatch_protocol)
 
-        return inputs, labels, torch.cat(adv_examples_total, dim=0), \
-                               torch.cat(coupled_inputs, dim=0)
+        return (inputs, labels, torch.cat(adv_examples_total, dim=0),
+                torch.cat(coupled_inputs, dim=0))
 
 
     def _minibatch_loss(self, inputs, labels, train_loss, attack_parameters,
                         epoch, minibatch_no, adv_saver, regularize_adv_scale,
-
                         regularize_adv_criterion, logger,
-                        is_xvalidate=False, duplicate_originals=True):
+                        is_xvalidate=False):
         """ Subroutine to compute the loss for a single minibatch """
 
         # Build adversarial examples
         attack_out = self._attack_subroutine(attack_parameters,
                                              inputs, labels,
                                              epoch, minibatch_no, adv_saver,
-                                             logger,
-                                        duplicate_originals=duplicate_originals,
-                                        is_xvalidate=is_xvalidate)
+                                             logger, is_xvalidate=is_xvalidate)
         inputs, labels, adv_examples, adv_inputs = attack_out
         # Now proceed with standard training
         self.normalizer.differentiable_call()
@@ -421,32 +479,27 @@ class AdversarialTraining(object):
         if regularize_adv_scale is not None:
             # BE SURE TO 'DETACH' THE ADV_INPUTS!!!
             reg_adv_loss = regularize_adv_criterion(adv_examples,
-                                              Variable(adv_inputs.data))
+                                                    adv_inputs.data)
             loss = loss + regularize_adv_scale * reg_adv_loss
 
         return loss
 
 
     def _cross_validate(self, test_loader, train_loss, attack_parameters, epoch,
-                        regularize_adv_scale, regularize_adv_criterion,
-                        duplicate_originals=True):
+                        regularize_adv_scale, regularize_adv_criterion):
         """ Performs cross-validation and returns the average/minibatch test
             loss
         """
         test_loss = 0
         test_minibatches = 0.0
         for i, data in enumerate(test_loader):
-            inputs, labels = data
-            if self.use_gpu:
-                inputs = inputs.cuda()
-                labels = labels.cuda()
+            inputs, labels = utils.cudafy(self.use_gpu, data)
             mb_loss = self._minibatch_loss(inputs, labels, train_loss,
                                            attack_parameters,
                                            epoch, i, None,
                                            regularize_adv_scale,
                                            regularize_adv_criterion,
                                            None,
-                                        duplicate_originals=duplicate_originals,
                                         is_xvalidate=True)
             test_loss += float(mb_loss.data)
             test_minibatches += 1.0
@@ -458,8 +511,7 @@ class AdversarialTraining(object):
               optimizer=None, attack_parameters=None,
               verbosity='medium', loglevel='medium', logger=None,
               starting_epoch=0, adversarial_save_dir=None,
-              regularize_adv_scale=None, test_percentage=0.1,
-              best_test_loss=None, duplicate_originals=True):
+              regularize_adv_scale=None, best_test_loss=None):
         """ Modifies the NN weights of self.classifier_net by training with
             the specified parameters s
         ARGS:
@@ -519,17 +571,18 @@ class AdversarialTraining(object):
         self.classifier_net.train() # in training mode
         assert isinstance(num_epochs, int)
 
+
+        # Validate the attack parameters
         if attack_parameters is not None:
             if not isinstance(attack_parameters, dict):
                 attack_parameters = {'attack': attack_parameters}
-
-
             # assert that the adv attacker uses the NN that's being trained
             for param in attack_parameters.values():
                 assert (param.adv_attack_obj.classifier_net ==
                         self.classifier_net)
 
 
+        # Validate the GPU parameters
         assert not (self.use_gpu and not cuda.is_available())
         if self.use_gpu:
             self.classifier_net.cuda()
@@ -537,7 +590,8 @@ class AdversarialTraining(object):
             for param in attack_parameters.values():
                 param.set_gpu(self.use_gpu)
 
-        # Verbosity parameters
+
+        # Validate the verbosity parameters
         assert verbosity in ['low', 'medium', 'high', 'snoop', None]
         self.set_verbosity_loglevel(verbosity,
                                     verbosity_or_loglevel='verbosity')
@@ -545,7 +599,8 @@ class AdversarialTraining(object):
         verbosity_minibatch = self.verbosity_minibatch
         verbosity_epoch = self.verbosity_epoch
 
-        # Loglevel parameters and logger initialization
+
+        # Validate Loglevel parameters and initialize logger
         assert loglevel in ['low', 'medium', 'high', 'snoop', None]
         if logger is None:
             logger = self.logger
@@ -554,12 +609,10 @@ class AdversarialTraining(object):
         logger.add_series('training_loss')
         for key in (attack_parameters or {}).keys():
             logger.add_series(key)
-
         self.set_verbosity_loglevel(loglevel, verbosity_or_loglevel='loglevel')
         loglevel_level = self.loglevel_level
         loglevel_minibatch = self.loglevel_minibatch
         loglevel_epoch = self.loglevel_epoch
-
 
 
         # Adversarial image saver:
@@ -577,40 +630,39 @@ class AdversarialTraining(object):
         if regularize_adv_scale is not None:
             regularize_adv_criterion = self._get_regularize_adv_criterion()
 
+
         # Setup best test loss
         if best_test_loss is None:
             best_test_loss = float('inf')
 
+
+
         ######################################################################
         #   Training loop                                                    #
         ######################################################################
-
         for epoch in range(starting_epoch + 1, num_epochs + 1):
             # Build train/test sets
-            if test_percentage > 0:
+            if self.protocol.test_percentage > 0:
                 train_loader, test_loader = utils.split_training_data(
                                                                 data_loader,
-                                                                test_percentage)
+                                                  self.protocol.test_percentage)
                 logger.add_series('test_loss')
             else:
                 train_loader = data_loader
 
             running_loss_print, running_loss_print_mb = 0.0, 0
             running_loss_log, running_loss_log_mb = 0.0, 0
-            for i, data in enumerate(train_loader):
-                inputs, labels = data
-                if self.use_gpu:
-                    inputs = inputs.cuda()
-                    labels = labels.cuda()
 
+            # Loop through minibatches
+            for i, data in enumerate(train_loader):
+                inputs, labels = utils.cudafy(self.use_gpu, data)
                 optimizer.zero_grad()
                 loss = self._minibatch_loss(inputs, labels, train_loss,
                                             attack_parameters,
                                             epoch, i, adv_saver,
                                             regularize_adv_scale,
                                             regularize_adv_criterion,
-                                            logger,
-                                            duplicate_originals=duplicate_originals)
+                                            logger)
                 loss.backward()
                 optimizer.step()
 
@@ -625,6 +677,7 @@ class AdversarialTraining(object):
                     running_loss_print = 0.0
                     running_loss_print_mb = 0
 
+
                 # log things
                 running_loss_log += float(loss.data)
                 running_loss_log_mb += 1
@@ -635,13 +688,13 @@ class AdversarialTraining(object):
                     running_loss_log = 0.0
                     running_loss_log_mb = 0
 
+
             # end_of_epoch: Do validation on reserved test set and save best
-            if test_percentage > 0:
+            if self.protocol.test_percentage > 0:
                 test_loss = self._cross_validate(test_loader, train_loss,
                                                  attack_parameters, epoch,
                                                  regularize_adv_scale,
-                                                 regularize_adv_criterion,
-                                        duplicate_originals=duplicate_originals)
+                                                 regularize_adv_criterion)
                 # Print test loss
                 if (verbosity_level >= 1):
                     print('TEST: [%d] loss: %.6f' % (epoch, test_loss))
@@ -669,7 +722,6 @@ class AdversarialTraining(object):
                                             epoch, self.classifier_net,
                                             k_highest=3)
 
-
         if verbosity_level >= 1:
             print('Finished Training')
 
@@ -681,9 +733,7 @@ class AdversarialTraining(object):
                               verbosity='medium', loglevel='medium',
                               starting_epoch='max',
                               adversarial_save_dir=None,
-                              regularize_adv_scale=None,
-                              test_percentage=0.1,
-                              duplicate_originals=True):
+                              regularize_adv_scale=None):
         """ Resumes training from a saved checkpoint with the same architecture.
             i.e. loads weights from specified checkpoint, figures out which
                  epoch we checkpointed on and then continues training until
@@ -728,9 +778,9 @@ class AdversarialTraining(object):
         ######################################################################
 
         best_test_loss = None
-        if test_percentage > 0:
+        if self.protocol.test_percentage > 0:
             _, test_loader = utils.split_training_data(data_loader,
-                                                       test_percentage)
+                                                  self.protocol.test_percentage)
             regularize_adv_criterion = None
             if regularize_adv_scale is not None:
                 regularize_adv_criterion = self._get_regularize_adv_criterion()
@@ -749,8 +799,7 @@ class AdversarialTraining(object):
                                                               loss_fxn,
                                                               attack_parameters,
                                                         0, regularize_adv_scale,
-                                                       regularize_adv_criterion,
-                                       duplicate_originals=duplicate_originals)
+                                                       regularize_adv_criterion)
             except:
                 print("NO SAVED BEST AVAILABLE")
                 test_loss_best = float('inf')
@@ -772,8 +821,7 @@ class AdversarialTraining(object):
                                                           test_loader, loss_fxn,
                                                           attack_parameters,
                                                     0, regularize_adv_scale,
-                                                   regularize_adv_criterion,
-                                        duplicate_originals=duplicate_originals)
+                                                   regularize_adv_criterion)
             else:
                 test_loss_loaded = float('inf')
             print("Best test loss:", test_loss_best)
@@ -794,7 +842,6 @@ class AdversarialTraining(object):
                    starting_epoch=epoch,
                    adversarial_save_dir=adversarial_save_dir,
                    regularize_adv_scale=regularize_adv_scale,
-                   test_percentage=test_percentage,
                    best_test_loss=best_test_loss)
 
 

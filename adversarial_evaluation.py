@@ -391,11 +391,8 @@ class AdversarialEvaluation(object):
             if verbose:
                 print("Starting minibatch %s..." % i)
 
+            inputs, labels = utils.cudafy(self.use_gpu, data)
 
-            inputs, labels = data
-            if self.use_gpu:
-                inputs = inputs.cuda()
-                labels = labels.cuda()
 
             if filter_successful:
                 inputs, labels = utils.filter_examples(self.classifier_net,
@@ -517,10 +514,7 @@ class AdversarialEvaluation(object):
             printer(minibatch_num)
 
             # Load data and build minibatch of attacked images
-            inputs, labels = data
-            if self.use_gpu:
-                inputs = inputs.cuda()
-                labels = labels.cuda()
+            inputs, labels = utils.cudafy(self.use_gpu, data)
 
             adv_examples = attack_parameters.attack(inputs, labels)[0]
 
