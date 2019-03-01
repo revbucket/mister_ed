@@ -19,12 +19,15 @@ import subprocess
 ###############################################################################
 # aka things for safer pytorch usage
 
-def cudafy(use_gpu, seq):
+def cudafy(use_gpu, seq, device=None):
     """ If use_gpu is True, returns cuda version of everything in tuple seq"""
     if use_gpu is False:
         return tuple(_.cpu() for _ in seq)
     else:
-        return tuple(_.cuda() for _ in seq)
+        if device != None:
+            return tuple(_.to(device) for _ in seq)
+        else:
+            return tuple(_.cuda() for _ in seq)
 
 
 def use_gpu():

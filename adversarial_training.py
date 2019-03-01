@@ -159,7 +159,7 @@ class AdversarialAttackParameters(object):
 #                                                                            #
 ##############################################################################
 
-class TraininingProtocol(object):
+class TrainingProtocol(object):
     """ Helper class to get passed in at training. Contains information about
         how 'adversarial training' is done. There's lots of schools of thoughts
         on best protocols here, so this just helps keep it clean what exactly
@@ -248,8 +248,8 @@ class AdversarialTraining(object):
         self.log_adv = None
         self.log_epoch = None
 
-        if self.protocol is None:
-            protocol = TraininingProtocol('adv_and_orig', 0.1)
+        if protocol is None:
+            protocol = TrainingProtocol('adv_and_orig', 0.1)
         self.protocol = protocol
 
 

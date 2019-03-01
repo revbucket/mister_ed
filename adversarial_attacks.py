@@ -636,7 +636,7 @@ class CarliniWagner(AdversarialAttack):
 
         if targets is not None:
             raise NotImplementedError("Targeted attacks aren't built yet")
-        examples, labels = self.cudafy(self.use_gpu, (examples, labels))
+        examples, labels = utils.cudafy(self.use_gpu, (examples, labels))
 
         self.classifier_net.eval() # ALWAYS EVAL FOR BUILDING ADV EXAMPLES
 

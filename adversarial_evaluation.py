@@ -26,7 +26,7 @@ from skimage.measure import compare_ssim as ssim
 import adversarial_attacks as aa
 import math
 import functools
-
+import bundled_attacks as ba
 ###########################################################################
 #                                                                         #
 #                               EVALUATION RESULT OBJECT                  #
@@ -209,6 +209,12 @@ class EvaluationResult(object):
             attack_loss = attack_obj.loss_fxn
         elif isinstance(attack_obj, aa.CarliniWagner):
             attack_loss = attack_obj._construct_loss_fxn(1.0, 0.0)
+        elif isinstance(attack_obj, ba.AttackBundle):
+            if attack_obj.goal == 'max_loss':
+                attack_loss = attack_obj.goal_params
+            else:
+                single_param = next(iter(attack_obj.bundled_attacks.values()))
+                attack_loss = single_param.adv_attack_obj.loss_fxn                
 
         attack_loss.setup_attack_batch(attack_out[0])
 
