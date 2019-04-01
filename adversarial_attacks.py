@@ -287,7 +287,7 @@ class PGD(AdversarialAttack):
                num_iterations=20, random_init=False, signed=False,
                optimizer=None, optimizer_kwargs=None,
                loss_convergence=0.999, verbose=True,
-               keep_best=True):
+               keep_best=True, log_iterates=False):
         """ Builds PGD examples for the given examples with l_inf bound and
             given step size. Is almost identical to the BIM attack, except
             we take steps that are proportional to gradient value instead of
@@ -316,6 +316,13 @@ class PGD(AdversarialAttack):
                                perturbations per example (in terms of maximal
                                loss) in the minibatch. The output is the best of
                                each of these then
+            iterate_log : bool or int - if False, we don't log iterates
+                                        if True, we log ALL iterates
+                                        if int, say k, we log every k^th iterate
+                                        Iterates are stashed in a dictionary
+                                        that's attached to the perturbation
+                                        object as an attribute
+
         RETURNS:
             AdversarialPerturbation object with correct parameters.
             Calling perturbation() gets Variable of output and
@@ -350,6 +357,8 @@ class PGD(AdversarialAttack):
             best_loss_per_example = {i: None for i in range(num_examples)}
 
         prev_loss = None
+
+        iterate_log = {}
 
         ######################################################################
         #   Loop through iterations                                          #
@@ -408,6 +417,13 @@ class PGD(AdversarialAttack):
             self.validator((best_perturbation or perturbation)(var_examples),
                            var_labels, iter_no=iter_no)
 
+
+            # log iterates if called for by kwargs
+            if log_iterates is not False:
+                if iter_no % log_iterates == 0:
+                    iterate = perturbation(var_examples).data.cpu().clone()
+                    iterate_log[iter_no] = iterate
+
             # Stop early if loss didn't go down too much
             if (iter_no >= min_iterations and
                 float(loss) >= loss_convergence * prev_loss):
@@ -423,6 +439,8 @@ class PGD(AdversarialAttack):
         perturbation.zero_grad()
         self.loss_fxn.cleanup_attack_batch()
         perturbation.attach_originals(examples)
+        if log_iterates is not False:
+            perturbation.attach_attr('iterate_log', iterate_log)
         return perturbation
 
 
@@ -602,7 +620,8 @@ class CarliniWagner(AdversarialAttack):
 
     def attack(self, examples, labels, targets=None, initial_lambda=1.0,
                num_bin_search_steps=10, num_optim_steps=1000,
-               confidence=0.0, warm_start=False, stop_early=True, verbose=True):
+               confidence=0.0, warm_start=False, stop_early=True, verbose=True,
+               log_iterates=False):
         """ Performs Carlini Wagner attack on provided examples to make them
             not get classified as the labels.
         ARGS:
@@ -622,6 +641,14 @@ class CarliniWagner(AdversarialAttack):
                                    binsearch step (but with the new loss)
             stop_early : boolean - if True, we stop after 100 optimizer iterations
                                    if the loss hasn't gone down too much.,
+            log_iterates : boolean or int - if False, we don't keep track of any
+                                            iterates. If True, we keep track of
+                                            ALL iterates. If an int, say k,
+                                            we keep track of every k^th iterate.
+                                    These are stashed in a dict and attached
+                                    to the perturbation object in an attribute
+                                    'iterate_log'. Also stashes lambdas at each
+                                    bin search step so we can recreat loss fxns
         RETURNS:
             AdversarialPerturbation object with correct parameters.
             Calling perturbation() gets Variable of output and
@@ -654,6 +681,7 @@ class CarliniWagner(AdversarialAttack):
                                                  .type(examples.type()) \
                                                    * MAXFLOAT,
                         'best_perturbation': self.threat_model(examples)}
+        iterate_log = {}
 
 
 
@@ -707,7 +735,16 @@ class CarliniWagner(AdversarialAttack):
                                " after %03d iterations" ) % (bin_search_step,
                                                              optim_step))
                     break
-                prev_loss = loss_sum
+
+                if log_iterates is not False:
+                    if (bin_search_step, 'lambdas') not in iterate_log:
+                        lambda_clone = var_scale.data.cpu().clone()
+                        iterate_log[(bin_search_step, 'lambdas')] = lambda_clone
+
+                    if optim_step > 0 and (optim_step % log_iterates) == 0:
+                        iterate = perturbation(var_examples).data.cpu().clone()
+                        iterate_log[(bin_search_step, optim_step)] = iterate
+
             # End inner optimize loop
 
             ################################################################
@@ -754,8 +791,11 @@ class CarliniWagner(AdversarialAttack):
         # End binary search loop
         perturbation = best_results['best_perturbation']
         if verbose:
-            num_successful = len([_ for _ in best_results['best_dist']
-                                  if _ < MAXFLOAT])
+            if best_results['best_dist'].numel() == 1:
+                num_successful = best_results['best_dist'].item() < MAXFLOAT
+            else:
+                num_successful = len([_ for _ in best_results['best_dist']
+                                      if _ < MAXFLOAT])
             print("\n Ending attack")
             print("Successful attacks for %03d/%03d examples in CONTINUOUS" %\
                   (num_successful, num_examples))
@@ -764,7 +804,8 @@ class CarliniWagner(AdversarialAttack):
         perturbation.attach_originals(examples)
         perturbation.attach_attr('var_scale', var_scale)
         perturbation.attach_attr('distances', best_results['best_dist'])
-
+        if log_iterates is not False:
+            perturbation.attach_attr('iterate_log', iterate_log)
         return perturbation
 
 

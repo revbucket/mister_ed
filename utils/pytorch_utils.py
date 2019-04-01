@@ -419,6 +419,9 @@ def fold_mask(x, y, mask):
     RETURNS:
         new object of the same shape/type as x and y
     """
+    if mask.numel() == 1: # special single element case
+        return x if mask.item() else y
+
     assert x.shape == y.shape
     assert mask.shape == (x.shape[0],)
     assert type(x) == type(y)
