@@ -133,12 +133,15 @@ def load_single_digits(train_or_val, digit_list, extra_args=None,
 
     running_count = 0
     running_mb, running_labels = [], []
-    remainder_mb, remainder_labels = [], []
-    full_dataset = []
+    full_dataset = [] # we output this at the end
     len_selected = len(selected_data)
-    for i, (data, labels) in enumerate(zip(selected_data, selected_labels)):
-        if data.shape[0] + running_count <= batch_size:
-            # Case when the full iter element goes into the running thing
+    zip_list = list(zip(selected_data, selected_labels))
+    iter_no = 0
+    data, labels = zip_list[0]
+    while True:
+        finished_zip_el = data.shape[0] + running_count <= batch_size
+        if finished_zip_el:
+            # Case when the full iter element goes into the running mb
             running_mb.append(data)
             running_labels.append(labels)
             running_count += data.shape[0]
@@ -148,18 +151,22 @@ def load_single_digits(train_or_val, digit_list, extra_args=None,
             running_mb.append(data[:to_select])
             running_labels.append(labels[:to_select])
             running_count += to_select
-            remainder_mb = data[to_select:]
-            remainder_labels = labels[to_select:]
-
+            data = data[to_select:]
+            labels = labels[to_select:]
 
         # Concatenate running elements and output to final dataset
-        if running_count == batch_size or (i +1 == len_selected):
+        if running_count == batch_size or\
+           (finished_zip_el and iter_no + 1 == len_selected):
             new_mb = torch.cat(running_mb)
             new_mb_label = label_map(torch.cat(running_labels).squeeze().long())
-
             full_dataset.append((new_mb, new_mb_label))
-            running_mb = [remainder_mb]
-            running_labels = [remainder_labels]
-            running_count = sum(_.shape[0] for _ in remainder_mb)
-    return full_dataset
+            running_count = 0
+            running_mb, running_labels = [], []
+
+        # Terminate if end of the line, otherwise get new batch
+        if finished_zip_el:
+            iter_no += 1
+            if iter_no == len_selected:
+                return full_dataset
+            data, labels = zip_list[iter_no]
 
