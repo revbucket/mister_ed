@@ -571,6 +571,68 @@ class DeltaAddition(AdversarialPerturbation):
         return x + self.delta
 
 
+    @initialized
+    def binsearch_closer(self, model, normalizer, labels, binsearch_steps=10):
+        """ Takes in a model, normalizer and perturbation and labels and binary
+            searches along the line between the originals and adverarsarial
+            examples to find adversarial examples that are closer than the provided ones.
+        ARGS:
+            model: nn.Module subclass - neural net that we have adversarial examples
+                                        for
+            normalizer: DifferentiableNormalizer object - object to whiten inputs
+
+            perturbation: AdversarialPerturbation object - must be a DeltaAddition
+                          and have attached originals
+            labels : Tensor - labels for the tensor we are searching for
+            num_binsearch_steps: int - number of binary search steps we perform
+        RETURNS:
+            new Perturbation object with closer adversarial tensors
+        """
+
+        # Setup stuff
+        assert self.originals is not None
+        successful = self.collect_successful(model, normalizer,
+                                             success_def='misclassify',
+                                             labels=labels)
+        num_examples = self.originals.shape[0]
+        channels = self.originals.dim() - 1
+        success_mask = torch.zeros(num_examples, dtype=torch.uint8,
+                                                 device=self.originals.device)
+        success_mask.index_fill_(0, successful['success_idxs'], 1).float()
+
+        scale_hi = torch.ones(num_examples, dtype=self.originals.dtype,
+                                            device=self.originals.device)
+        scale_lo = torch.zeros_like(scale_hi)
+
+
+        # Start binsearch
+        for _ in range(binsearch_steps):
+            # -- first check if the midpoint is misclassified
+            scale = (scale_hi + scale_lo) / 2.0
+            scale = scale.view((-1,) + (1,) * channels)
+            to_checks = self.originals + scale * self.delta
+            scale = scale.squeeze()
+            check_labels = torch.max(model(normalizer(to_checks)), 1)[1]
+            iter_misclass = (check_labels != labels).float()
+
+            # -- adjust upper and lower bounds accordingly
+            scale_hi = iter_misclass * scale +(1 - iter_misclass) * scale_hi
+            scale_lo = iter_misclass * scale_lo + (1 - iter_misclass) * scale
+
+
+        # Now make new perturbation with the binary searched things
+        scale_hi = scale_hi.view((-1,) + (1,) * channels)
+        success_mask = success_mask.view((-1,) + (1,) * channels).float()
+
+        new_delta = success_mask * self.delta.data * scale_hi +\
+                    (1 - success_mask) * self.delta.data
+
+        new_perturbation = DeltaAddition(self.threat_model,
+                                         self.perturbation_params)
+        new_perturbation._merge_setup(num_examples, new_delta)
+        new_perturbation.attach_originals(self.originals)
+
+        return new_perturbation
 
 
 ##############################################################################
@@ -642,7 +704,7 @@ class ParameterizedXformAdv(AdversarialPerturbation):
         # OR a singleton list containing a tensor of same shape/device as delta
         param_list = list(self.xform.parameters())
         assert len(param_list) == 1
-        params = param_list[0]        
+        params = param_list[0]
         if isinstance(grad_data, list):
             assert len(grad_data) == 1
             grad_data = grad_data[0]
