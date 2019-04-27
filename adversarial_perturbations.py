@@ -613,20 +613,19 @@ class DeltaAddition(AdversarialPerturbation):
             to_checks = self.originals + scale * self.delta
             scale = scale.squeeze()
             check_labels = torch.max(model(normalizer(to_checks)), 1)[1]
-            iter_misclass = (check_labels != labels).float()
+            iter_misclass = (check_labels != labels)
 
             # -- adjust upper and lower bounds accordingly
-            scale_hi = iter_misclass * scale +(1 - iter_misclass) * scale_hi
-            scale_lo = iter_misclass * scale_lo + (1 - iter_misclass) * scale
+            scale_hi = torch.where(iter_misclass == 1, scale, scale_hi)
+            scale_lo = torch.where(iter_misclass == 1, scale_lo, scale)
 
 
         # Now make new perturbation with the binary searched things
         scale_hi = scale_hi.view((-1,) + (1,) * channels)
-        success_mask = success_mask.view((-1,) + (1,) * channels).float()
+        success_mask = success_mask.view((-1,) + (1,) * channels)
 
-        new_delta = success_mask * self.delta.data * scale_hi +\
-                    (1 - success_mask) * self.delta.data
-
+        new_delta = torch.where(success_mask == 1, self.delta.data * scale_hi,
+                                                   self.delta.data)
         new_perturbation = DeltaAddition(self.threat_model,
                                          self.perturbation_params)
         new_perturbation._merge_setup(num_examples, new_delta)
